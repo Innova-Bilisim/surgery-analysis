@@ -22,6 +22,31 @@ const VideoPlayer = ({
   const [connectionStatus, setConnectionStatus] = useState('connecting') // connecting, connected, disconnected
   const [streamQuality, setStreamQuality] = useState('auto')
   const [videojs, setVideojs] = useState(null)
+  // Mount state for DOM readiness
+  const [isDOMReady, setIsDOMReady] = useState(false)
+  
+  // DOM readiness effect
+  useEffect(() => {
+    if (!mounted) return
+    
+    const checkDOMReady = () => {
+      if (videoRef.current && 
+          videoRef.current.parentNode && 
+          videoRef.current.isConnected && 
+          containerRef.current && 
+          containerRef.current.isConnected) {
+        setIsDOMReady(true)
+      }
+    }
+    
+    // Check immediately
+    checkDOMReady()
+    
+    // Also check after a brief delay to ensure DOM is stable
+    const timer = setTimeout(checkDOMReady, 100)
+    
+    return () => clearTimeout(timer)
+  }, [mounted])
 
   // Mark component as mounted
   useEffect(() => {
@@ -31,18 +56,25 @@ const VideoPlayer = ({
     // Dynamically import Video.js only on client side
     const loadVideojs = async () => {
       try {
+        console.log('🎬 Loading Video.js library...')
         const videojsModule = await import('video.js')
         const videojsDefault = videojsModule.default
+        console.log('🎬 Video.js module loaded:', !!videojsDefault)
         
         // Import CSS
+        console.log('🎬 Loading Video.js CSS...')
         await import('video.js/dist/video-js.css')
+        console.log('🎬 Video.js CSS loaded')
         
         // Import HLS plugin
+        console.log('🎬 Loading HLS plugin...')
         await import('@videojs/http-streaming/dist/videojs-http-streaming.min.js')
+        console.log('🎬 HLS plugin loaded')
         
         setVideojs(() => videojsDefault)
+        console.log('🎬 Video.js setup complete!')
       } catch (error) {
-        console.error('Failed to load Video.js:', error)
+        console.error('🎬 Failed to load Video.js:', error)
         setError('Failed to load video player library')
       }
     }
@@ -111,7 +143,7 @@ const VideoPlayer = ({
         controls: true,
         responsive: true,
         fluid: false,
-        preload: 'auto',
+        preload: 'metadata', // Changed from 'auto' - fixes loading issues
         autoplay: false,
         muted: false,
         volume: 0.8,
@@ -120,6 +152,12 @@ const VideoPlayer = ({
           options: {
             navigationUI: 'hide'
           }
+        },
+        html5: {
+          // Add HTML5 video options for better compatibility
+          nativeVideoTracks: false,
+          nativeAudioTracks: false,
+          nativeTextTracks: false
         },
         sources: [source]
       }
@@ -147,30 +185,90 @@ const VideoPlayer = ({
     setConnectionStatus('connecting')
   }, [])
 
-  const initializePlayer = useCallback(() => {
-    // Don't initialize if component is being cleaned up or videojs not loaded
-    if (cleanupRef.current || !mounted || !videojs) {
+  // Initialize player with proper DOM checks
+  const initializePlayer = useCallback(async () => {
+    console.log('🎬 InitializePlayer called - mounted:', mounted, 'videojs:', !!videojs, 'isDOMReady:', isDOMReady)
+    
+    if (cleanupRef.current || !mounted || !videojs || !isDOMReady) {
+      console.log('🎬 InitializePlayer early return - cleanup:', cleanupRef.current, 'mounted:', mounted, 'videojs:', !!videojs, 'isDOMReady:', isDOMReady)
       return
     }
-
-    const videoElement = videoRef.current
-    const container = containerRef.current
-
-    if (!videoElement || !container || playerRef.current) {
+    
+    // Ensure video element exists and is in DOM
+    if (!videoRef.current || !videoRef.current.parentNode || !videoRef.current.isConnected) {
+      console.log('🎬 Video element not ready in DOM yet')
       return
     }
-
-    // Ensure element is in DOM
-    if (!document.body.contains(container)) {
-      console.warn('Container element is not in DOM yet, waiting...')
+    
+    // Additional container check
+    if (!containerRef.current || !containerRef.current.isConnected) {
+      console.log('🎬 Container element not ready in DOM yet')
       return
     }
-
-    console.log(`Initializing Video.js player for ${isLive ? 'live streaming' : 'file playback'}...`)
+    
+    console.log('🎬 Initializing Video.js player for file playback...')
 
     try {
       const config = getPlayerConfig()
-      const player = videojs(videoElement, config)
+      console.log('🎬 Player config:', config)
+      
+      const player = videojs(videoRef.current, config, function onPlayerReady() {
+        if (cleanupRef.current) return
+        console.log('🎬 Player is ready!')
+        setIsReady(true)
+        setError(null)
+
+        // Video.js best practice: ensure player is truly ready
+        this.ready(() => {
+          console.log('🎬 Player fully initialized!')
+          
+          // Load the video source explicitly
+          if (config.sources && config.sources.length > 0) {
+            this.src(config.sources)
+            console.log('🎬 Video source set:', config.sources[0].src)
+          }
+        })
+
+        // Add safer event handling to prevent DOM targeting errors
+        try {
+          // Disable Video.js default behaviors that cause DOM issues
+          this.off('useractive')
+          this.off('userinactive')
+          
+          // Custom user activity handling to prevent DOM errors
+          let userActivityTimer = null
+          const handleUserActivity = () => {
+            if (cleanupRef.current) return
+            this.trigger('useractive')
+            if (userActivityTimer) clearTimeout(userActivityTimer)
+            userActivityTimer = setTimeout(() => {
+              if (!cleanupRef.current && this.el()) {
+                this.trigger('userinactive')
+              }
+            }, 3000)
+          }
+          
+          // Add safer mouse/touch event listeners
+          if (this.el()) {
+            this.el().addEventListener('mousemove', handleUserActivity, { passive: true })
+            this.el().addEventListener('touchstart', handleUserActivity, { passive: true })
+          }
+
+          // Auto-play video
+          if (!isLive) {
+            // Small delay to ensure everything is loaded
+            setTimeout(() => {
+              if (!cleanupRef.current && this.readyState() >= 1) {
+                this.play().catch(e => {
+                  console.log('Auto-play prevented:', e.message)
+                })
+              }
+            }, 500)
+          }
+        } catch (error) {
+          console.warn('Player event setup warning:', error)
+        }
+      })
 
       // Check if component was unmounted during initialization
       if (cleanupRef.current) {
@@ -230,19 +328,23 @@ const VideoPlayer = ({
       // Event listeners
       player.on('play', () => {
         if (cleanupRef.current) return
-        console.log(`${isLive ? 'Live stream' : 'Video'} playing`)
+        console.log(`🎬 ${isLive ? 'Live stream' : 'Video'} playing`)
         if (onTimeUpdate) onTimeUpdate(true)
       })
 
       player.on('pause', () => {
         if (cleanupRef.current) return
-        console.log(`${isLive ? 'Live stream' : 'Video'} paused`)
+        console.log(`🎬 ${isLive ? 'Live stream' : 'Video'} paused`)
         if (onTimeUpdate) onTimeUpdate(false)
       })
 
       player.on('error', (e) => {
         if (cleanupRef.current) return
-        console.error('Player error:', e)
+        console.error('🎬 Player error:', e)
+        const player = e.target
+        if (player && player.error()) {
+          console.error('🎬 Player error details:', player.error())
+        }
         const errorMsg = isLive ? 'Live stream connection error' : 'Video player error occurred'
         setError(errorMsg)
         if (isLive) setConnectionStatus('disconnected')
@@ -250,14 +352,43 @@ const VideoPlayer = ({
 
       player.on('loadstart', () => {
         if (cleanupRef.current) return
-        console.log(`${isLive ? 'Stream' : 'Video'} load started`)
+        console.log(`🎬 ${isLive ? 'Stream' : 'Video'} load started`)
         if (isLive) setConnectionStatus('connecting')
       })
 
       player.on('loadeddata', () => {
         if (cleanupRef.current) return
-        console.log(`${isLive ? 'Stream' : 'Video'} data loaded`)
+        console.log(`🎬 ${isLive ? 'Stream' : 'Video'} data loaded`)
         if (isLive) setConnectionStatus('connected')
+      })
+
+      player.on('canplay', () => {
+        if (cleanupRef.current) return
+        console.log('🎬 Video can start playing')
+      })
+
+      player.on('canplaythrough', () => {
+        if (cleanupRef.current) return
+        console.log('🎬 Video can play through without stopping')
+        setIsReady(true) // Ensure ready state is set when video is playable
+      })
+
+      player.on('loadedmetadata', () => {
+        if (cleanupRef.current) return
+        console.log('🎬 Video metadata loaded')
+      })
+
+      player.on('durationchange', () => {
+        if (cleanupRef.current) return
+        console.log('🎬 Video duration available:', player.duration())
+      })
+
+      player.on('progress', () => {
+        if (cleanupRef.current) return
+        const buffered = player.buffered()
+        if (buffered.length > 0) {
+          console.log('🎬 Video buffering progress:', buffered.end(buffered.length - 1))
+        }
       })
 
       // Live streaming specific events
@@ -306,27 +437,27 @@ const VideoPlayer = ({
       setError('Failed to initialize video player')
       if (isLive) setConnectionStatus('disconnected')
     }
-  }, [isLive, getPlayerConfig, mounted, onTimeUpdate, cleanupRef, videojs])
+  }, [isLive, getPlayerConfig, mounted, onTimeUpdate, cleanupRef, videojs, isDOMReady])
 
   // Initialize player when component is mounted and DOM is ready and videojs is loaded
   useEffect(() => {
-    if (!mounted || !videojs) return
+    if (!mounted || !videojs || !isDOMReady) return
 
     // Cleanup any existing player first
     cleanupPlayer()
 
     // Use setTimeout to ensure DOM is fully rendered
-    const timer = setTimeout(() => {
+    const timer = setTimeout(async () => {
       if (!cleanupRef.current) {
-        initializePlayer()
+        await initializePlayer()
       }
-    }, 200) // Increased timeout for better stability
+    }, 300) // Reduced timeout since we now have better DOM checks
 
     return () => {
       clearTimeout(timer)
       cleanupPlayer()
     }
-  }, [initializePlayer, cleanupPlayer, videojs])
+  }, [initializePlayer, cleanupPlayer, videojs, isDOMReady]) // Added isDOMReady dependency
 
   // Handle onTimeUpdate changes separately
   useEffect(() => {

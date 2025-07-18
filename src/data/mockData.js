@@ -1,7 +1,7 @@
 export const mockOperations = [
   {
     id: 'op1',
-    type: 'Appendectomy',
+    type: 'Cholecystectomy',
     patient: {
       id: 'P001',
       name: 'Ahmet Yılmaz',
@@ -12,7 +12,7 @@ export const mockOperations = [
       specialty: 'General Surgery'
     },
     room: 'OR-1',
-    scheduledTime: new Date(2025, 6, 8, 9, 0).toISOString(), // July 8, 2025 09:00
+    scheduledTime: new Date(2025, 6, 16, 9, 0).toISOString(), // July 8, 2025 09:00
     status: 'in-progress'
   },
   {
@@ -28,7 +28,7 @@ export const mockOperations = [
       specialty: 'General Surgery'
     },
     room: 'OR-2',
-    scheduledTime: new Date(2025, 6, 8, 11, 30).toISOString(), // July 8, 2025 11:30
+    scheduledTime: new Date(2025, 6, 16, 11, 30).toISOString(), // July 8, 2025 11:30
     status: 'scheduled'
   },
   {
@@ -44,7 +44,7 @@ export const mockOperations = [
       specialty: 'General Surgery'
     },
     room: 'OR-3',
-    scheduledTime: new Date(2025, 6, 8, 14, 0).toISOString(), // July 8, 2025 14:00
+    scheduledTime: new Date(2025, 6, 17, 14, 0).toISOString(), // July 8, 2025 14:00
     status: 'scheduled'
   },
   {
@@ -60,7 +60,7 @@ export const mockOperations = [
       specialty: 'Endocrine Surgery'
     },
     room: 'OR-1',
-    scheduledTime: new Date(2025, 6, 9, 10, 0).toISOString(), // July 9, 2025 10:00
+    scheduledTime: new Date(2025, 6, 17, 16, 0).toISOString(), // July 9, 2025 10:00
     status: 'scheduled'
   },
   {

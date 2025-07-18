@@ -1,74 +1,93 @@
 'use client'
 
-import { useState, useEffect } from 'react'
-import { useRouter } from 'next/navigation'
-import { ArrowLeft, Play, Clock, User, UserCheck, Activity, AlertCircle } from 'lucide-react'
-import { mockOperations, mockEvents } from '@/data/mockData'
+import { useEffect } from 'react'
+import { ArrowLeft, Clock, User, UserCheck, Activity, AlertCircle, Play } from 'lucide-react'
 import VideoPlayer from '@/components/VideoPlayer'
 import VideoPlayerErrorBoundary from '@/components/VideoPlayerErrorBoundary'
+import useOperation from '@/hooks/useOperation'
+import useVideoControl from '@/hooks/useVideoControl'
+import useMQTT from '@/hooks/useMQTT'
+import useOperationStore from '@/stores/operationStore'
+import mlModelService from '@/services/mlModelService'
 
 const AnalysisPage = ({ operationId }) => {
-  const router = useRouter()
-  const [operation, setOperation] = useState(null)
-  const [events, setEvents] = useState([])
-  const [isPlaying, setIsPlaying] = useState(false)
-  const [currentTime, setCurrentTime] = useState('00:00')
-  const [totalTime] = useState('02:45:30')
+  // Custom hooks for business logic
+  const { 
+    currentOperation, 
+    events, 
+    loadOperation, 
+    exitOperation 
+  } = useOperation()
+  
+  const { 
+    isPlaying, 
+    currentTime, 
+    handlePlayStateChange, 
+    isModelActive 
+  } = useVideoControl()
+  
+  // Store state
+  const { 
+    analysisStatus, 
+    setAnalysisStatus, 
+    setModelActive 
+  } = useOperationStore()
+  
+  // MQTT connection hook - only when analysis is running
+  const { 
+    connectionStatus: mqttStatus, 
+    isConnected: mqttConnected 
+  } = useMQTT(analysisStatus === 'running')
 
+
+  // Load operation on component mount
   useEffect(() => {
     if (operationId) {
-      const foundOperation = mockOperations.find(op => op.id === operationId)
-      setOperation(foundOperation || null)
-      
-      // Filter events for this operation
-      const operationEvents = mockEvents.filter(event => event.operationId === operationId)
-      setEvents(operationEvents.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()))
+      loadOperation(operationId)
     }
-  }, [operationId])
+  }, [operationId, loadOperation])
 
+  // Debug: Monitor analysis status changes
   useEffect(() => {
-    // Simulate real-time events
-    const interval = setInterval(() => {
-      if (operation && operation.status === 'in-progress') {
-        const newEvent = {
-          id: `ev${Date.now()}`,
-          operationId: operation.id,
-          timestamp: new Date().toISOString(),
-          type: ['monitoring', 'medication'][Math.floor(Math.random() * 2)],
-          description: [
-            'Vital signs monitored - Normal',
-            'Blood pressure: 125/82 mmHg',
-            'Heart rate: 72 BPM',
-            'Oxygen saturation: 98%',
-            'Temperature: 36.5°C'
-          ][Math.floor(Math.random() * 5)],
-          severity: 'low'
-        }
-        
-        setEvents(prev => [newEvent, ...prev])
+    console.log('🔄 Analysis status changed to:', analysisStatus)
+  }, [analysisStatus])
+
+  // Start analysis function
+  const startAnalysis = async () => {
+    if (!currentOperation) return
+
+    try {
+      setAnalysisStatus('starting')
+      setModelActive(true)
+
+      // Start ML model analysis
+      const result = await mlModelService.startAnalysis(currentOperation)
+      
+      if (result.success) {
+        console.log('Setting analysis status to running...')
+        setAnalysisStatus('running')
+        console.log('Analysis started successfully:', result.message)
+      } else {
+        throw new Error(result.message || 'Failed to start analysis')
       }
-    }, 15000) // Add new event every 15 seconds
-
-    return () => clearInterval(interval)
-  }, [operation])
-
-  useEffect(() => {
-    // Simulate video time progression
-    if (isPlaying) {
-      const interval = setInterval(() => {
-        setCurrentTime(prev => {
-          const [hours, minutes, seconds] = prev.split(':').map(Number)
-          const totalSeconds = hours * 3600 + minutes * 60 + seconds + 1
-          const newHours = Math.floor(totalSeconds / 3600)
-          const newMinutes = Math.floor((totalSeconds % 3600) / 60)
-          const newSecs = totalSeconds % 60
-          return `${newHours.toString().padStart(2, '0')}:${newMinutes.toString().padStart(2, '0')}:${newSecs.toString().padStart(2, '0')}`
-        })
-      }, 1000)
-      
-      return () => clearInterval(interval)
+    } catch (error) {
+      console.error('Failed to start analysis:', error)
+      setAnalysisStatus('idle')
+      setModelActive(false)
+      // You could add error state/notification here
     }
-  }, [isPlaying])
+  }
+
+  // Stop analysis function
+  const stopAnalysis = async () => {
+    try {
+      setAnalysisStatus('idle')
+      setModelActive(false)
+      await mlModelService.stopAnalysis()
+    } catch (error) {
+      console.error('Failed to stop analysis:', error)
+    }
+  }
 
   const formatEventTime = (timestamp) => {
     const date = new Date(timestamp)
@@ -111,12 +130,12 @@ const AnalysisPage = ({ operationId }) => {
     }
   }
 
-  if (!operation) {
+  if (!currentOperation) {
     return (
       <div className="h-screen bg-dark-900 text-white flex flex-col items-center justify-center">
         <h2 className="text-2xl font-light text-dark-400 mb-8">Operation not found</h2>
         <button 
-          onClick={() => router.push('/')} 
+          onClick={exitOperation} 
           className="flex items-center gap-2 bg-primary-600/20 border border-primary-600/30 text-primary-400 px-6 py-3 rounded-lg hover:bg-primary-600/30 transition-all duration-200"
         >
           <ArrowLeft className="w-5 h-5" /> Go Back
@@ -130,32 +149,49 @@ const AnalysisPage = ({ operationId }) => {
       {/* Operation Info Bar */}
       <div className="flex items-center justify-between px-8 py-4 bg-dark-900/95 backdrop-blur-sm border-b border-primary-500/20 flex-shrink-0">
         <button 
-          onClick={() => router.push('/')} 
+          onClick={exitOperation} 
           className="flex items-center gap-2 bg-primary-600/20 border border-primary-600/30 text-primary-400 px-4 py-3 rounded-lg hover:bg-primary-600/30 transition-all duration-200 hover:scale-105"
         >
           <ArrowLeft className="w-5 h-5" />
         </button>
         
         <div className="flex-1 mx-8">
-          <h2 className="text-xl font-semibold text-white mb-2">{operation.type}</h2>
+          <div className="flex items-center gap-4 mb-2">
+            <h2 className="text-xl font-semibold text-white">{currentOperation.type}</h2>
+            {analysisStatus === 'starting' && (
+              <span className="bg-amber-600/20 text-amber-400 px-2 py-1 rounded-md text-xs font-semibold border border-amber-600/30">
+                STARTING...
+              </span>
+            )}
+            {analysisStatus === 'running' && (
+              <span className="bg-emerald-600/20 text-emerald-400 px-2 py-1 rounded-md text-xs font-semibold border border-emerald-600/30">
+                AI ANALYZING
+              </span>
+            )}
+            {mqttConnected && (
+              <span className="bg-blue-600/20 text-blue-400 px-2 py-1 rounded-md text-xs font-semibold border border-blue-600/30">
+                MQTT CONNECTED
+              </span>
+            )}
+          </div>
           <div className="flex items-center gap-8 flex-wrap text-sm">
             <div className="flex items-center gap-2">
               <User className="w-4 h-4 text-dark-400" />
-              <span>{operation.patient.name} ({operation.patient.age} yrs)</span>
+              <span>{currentOperation.patient.name} ({currentOperation.patient.age} yrs)</span>
             </div>
             <div className="flex items-center gap-2">
               <UserCheck className="w-4 h-4 text-dark-400" />
-              <span>Dr. {operation.doctor.name}</span>
+              <span>Dr. {currentOperation.doctor.name}</span>
             </div>
             <div className="text-dark-300">
-              Room {operation.room}
+              Room {currentOperation.room}
             </div>
             <div>
               <span className={`
                 px-3 py-1 rounded-full text-xs font-semibold uppercase tracking-wide
-                ${operation.status === 'in-progress' ? 'bg-amber-100 text-amber-800' : 'bg-blue-100 text-blue-800'}
+                ${currentOperation.status === 'in-progress' ? 'bg-amber-100 text-amber-800' : 'bg-blue-100 text-blue-800'}
               `}>
-                {operation.status === 'in-progress' ? 'In Progress' : 'Scheduled'}
+                {currentOperation.status === 'in-progress' ? 'In Progress' : 'Scheduled'}
               </span>
             </div>
           </div>
@@ -163,7 +199,7 @@ const AnalysisPage = ({ operationId }) => {
         
         <div className="flex items-center gap-2 font-semibold text-primary-400">
           <Clock className="w-5 h-5" />
-          <span>{currentTime} / {totalTime}</span>
+          <span>{currentTime} / 02:45:30</span>
         </div>
       </div>
 
@@ -171,30 +207,83 @@ const AnalysisPage = ({ operationId }) => {
       <div className="grid grid-cols-1 lg:grid-cols-[1fr_350px] flex-1 min-h-0 overflow-hidden">
         {/* Video Section */}
         <div className="p-8 flex flex-col overflow-hidden">
-          <VideoPlayerErrorBoundary>
-            <VideoPlayer 
-              isLive={false} // Video file playback mode
-              videoSrc="/videos/video01.mp4"
-              currentTime={currentTime}
-              totalTime={totalTime}
-              onTimeUpdate={setIsPlaying}
-              cameraId={operation.room}
-              className="flex-1"
-            />
-          </VideoPlayerErrorBoundary>
+          {analysisStatus === 'idle' ? (
+            // Start Analysis Screen
+            <div className="flex-1 flex flex-col items-center justify-center bg-dark-800 rounded-xl">
+              <div className="text-center mb-8">
+                <h3 className="text-2xl font-semibold text-white mb-4">Surgery Analysis</h3>
+                <p className="text-dark-300 mb-8">Click to start AI-powered surgery analysis and monitoring</p>
+                <button
+                  onClick={startAnalysis}
+                  className="bg-emerald-600 hover:bg-emerald-700 text-white px-8 py-4 rounded-lg text-lg font-semibold transition-all duration-200 hover:scale-105 flex items-center gap-3"
+                >
+                  <Play className="w-6 h-6" />
+                  Start Analysis
+                </button>
+              </div>
+            </div>
+          ) : analysisStatus === 'starting' ? (
+            // Loading Screen
+            <div className="flex-1 flex flex-col items-center justify-center bg-dark-800 rounded-xl">
+              <div className="text-center">
+                <div className="w-12 h-12 border-4 border-emerald-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+                <h3 className="text-xl font-semibold text-white mb-2">Starting Analysis...</h3>
+                <p className="text-dark-300">Initializing ML model and connecting to systems</p>
+              </div>
+            </div>
+          ) : (
+            // Video Player (Running State)
+            <VideoPlayerErrorBoundary>
+              <VideoPlayer 
+                isLive={false}
+                videoSrc="/videos/video01.mp4"
+                currentTime={currentTime}
+                totalTime="02:45:30"
+                onTimeUpdate={handlePlayStateChange}
+                cameraId={currentOperation.room}
+                className="flex-1"
+              />
+            </VideoPlayerErrorBoundary>
+          )}
         </div>
 
         {/* Events Section */}
         <div className="bg-dark-800 border-l border-primary-500/20 flex flex-col min-h-0">
           <div className="px-6 py-6 border-b border-primary-500/20 flex justify-between items-center flex-shrink-0">
             <h3 className="text-xl font-semibold text-white">Operation Events</h3>
-            <div className="bg-primary-600/20 text-primary-400 px-3 py-1 rounded-xl text-xs font-semibold">
-              {events.length} event{events.length !== 1 ? 's' : ''}
+            <div className="flex items-center gap-3">
+              <div className="bg-primary-600/20 text-primary-400 px-3 py-1 rounded-xl text-xs font-semibold">
+                {events.length} event{events.length !== 1 ? 's' : ''}
+              </div>
+              {mqttConnected && (
+                <div className="w-2 h-2 bg-emerald-400 rounded-full animate-pulse"></div>
+              )}
+              {analysisStatus === 'running' && (
+                <button
+                  onClick={stopAnalysis}
+                  className="bg-red-600/20 border border-red-600/30 text-red-400 px-3 py-1 rounded-md text-xs font-semibold hover:bg-red-600/30 transition-all duration-200"
+                >
+                  Stop Analysis
+                </button>
+              )}
             </div>
           </div>
           
           <div className="flex-1 overflow-y-auto scrollbar-dark p-4 space-y-3 min-h-0">
-            {events.map(event => (
+            {analysisStatus === 'idle' ? (
+              <div className="text-center text-dark-400 py-12">
+                <Activity className="w-12 h-12 mx-auto mb-4 opacity-50" />
+                <p className="text-lg">No analysis running</p>
+                <p className="text-sm mt-2">Start analysis to see real-time surgery events</p>
+              </div>
+            ) : events.length === 0 ? (
+              <div className="text-center text-dark-400 py-12">
+                <Activity className="w-12 h-12 mx-auto mb-4 opacity-50" />
+                <p className="text-lg">Waiting for events...</p>
+                <p className="text-sm mt-2">MQTT connected, listening for surgery analysis</p>
+              </div>
+            ) : (
+              events.map(event => (
               <div 
                 key={event.id} 
                 className={`
@@ -203,18 +292,38 @@ const AnalysisPage = ({ operationId }) => {
                 `}
               >
                 <div className="flex items-center justify-between mb-2">
-                  {getEventIcon(event.type)}
+                  <div className="flex items-center gap-2">
+                    {getEventIcon(event.type)}
+                    {event.source && (
+                      <span className={`
+                        text-xs px-2 py-1 rounded-md font-semibold
+                        ${event.source === 'mqtt' ? 'bg-blue-600/20 text-blue-400' :
+                          event.source === 'ml' ? 'bg-emerald-600/20 text-emerald-400' :
+                          'bg-gray-600/20 text-gray-400'}
+                      `}>
+                        {event.source.toUpperCase()}
+                      </span>
+                    )}
+                  </div>
                   <span className="text-xs text-dark-400 font-medium">{formatEventTime(event.timestamp)}</span>
                 </div>
                 <div className="text-white text-sm leading-relaxed mb-2">
                   {event.description}
                 </div>
-                <div className={`text-xs font-semibold uppercase tracking-wide ${getSeverityTextColor(event.severity)}`}>
-                  {event.severity === 'high' ? 'High' : 
-                   event.severity === 'medium' ? 'Medium' : 'Low'}
+                <div className="flex justify-between items-center">
+                  <div className={`text-xs font-semibold uppercase tracking-wide ${getSeverityTextColor(event.severity)}`}>
+                    {event.severity === 'high' ? 'High' : 
+                     event.severity === 'medium' ? 'Medium' : 'Low'}
+                  </div>
+                  {event.confidence && (
+                    <div className="text-xs text-dark-400">
+                      Confidence: {Math.round(event.confidence * 100)}%
+                    </div>
+                  )}
                 </div>
               </div>
-            ))}
+              ))
+            )}
           </div>
         </div>
       </div>

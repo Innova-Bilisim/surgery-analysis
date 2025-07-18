@@ -14,10 +14,12 @@
     "@videojs/themes": "^1.0.1",
     "hls.js": "^1.6.5",
     "lucide-react": "^0.525.0",
+    "mqtt": "^5.11.4",
     "next": "15.2.0",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
-    "video.js": "^8.23.3"
+    "video.js": "^8.23.3",
+    "zustand": "^5.0.2"
   },
   "devDependencies": {
     "@types/react": "^19.1.8",

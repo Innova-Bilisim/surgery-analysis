@@ -1,40 +1,28 @@
 'use client'
 
 import { useState } from 'react'
-import { useRouter } from 'next/navigation'
 import { Calendar, Clock, User, UserCheck, ChevronLeft, ChevronRight } from 'lucide-react'
-import { mockOperations } from '@/data/mockData'
+import useOperation from '@/hooks/useOperation'
 
 const OperationSelection = () => {
   const [selectedDate, setSelectedDate] = useState(new Date())
   const [currentMonth, setCurrentMonth] = useState(new Date())
-  const router = useRouter()
+  
+  // Use custom hook for business logic
+  const { 
+    navigateToOperation, 
+    getOperationsForDate,
+    formatTime,
+    formatDate,
+    getOperationStatusColor,
+    getOperationStatusText
+  } = useOperation()
 
   const handleOperationSelect = (operation) => {
-    router.push(`/analysis/${operation.id}`)
+    navigateToOperation(operation.id)
   }
 
-  const getOperationsForDate = (date) => {
-    return mockOperations.filter(op => {
-      const opDate = new Date(op.scheduledTime)
-      return opDate.toDateString() === date.toDateString()
-    })
-  }
 
-  const formatDate = (date) => {
-    return date.toLocaleDateString('en-US', {
-      day: 'numeric',
-      month: 'long',
-      year: 'numeric'
-    })
-  }
-
-  const formatTime = (dateString) => {
-    return new Date(dateString).toLocaleTimeString('en-US', {
-      hour: '2-digit',
-      minute: '2-digit'
-    })
-  }
 
   const getDaysInMonth = (date) => {
     const year = date.getFullYear()
@@ -203,14 +191,9 @@ const OperationSelection = () => {
                   <div className="flex justify-end">
                     <span className={`
                       px-4 py-2 rounded-full text-sm font-semibold uppercase tracking-wide
-                      ${operation.status === 'scheduled' ? 'bg-blue-100 text-blue-700' :
-                        operation.status === 'in-progress' ? 'bg-amber-100 text-amber-700' :
-                        operation.status === 'completed' ? 'bg-emerald-100 text-emerald-700' : 
-                        'bg-red-100 text-red-700'}
+                      ${getOperationStatusColor(operation.status)}
                     `}>
-                      {operation.status === 'scheduled' ? 'Scheduled' :
-                       operation.status === 'in-progress' ? 'In Progress' :
-                       operation.status === 'completed' ? 'Completed' : 'Cancelled'}
+                      {getOperationStatusText(operation.status)}
                     </span>
                   </div>
                 </div>
