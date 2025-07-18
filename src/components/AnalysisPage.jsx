@@ -30,7 +30,11 @@ const AnalysisPage = ({ operationId }) => {
   const { 
     analysisStatus, 
     setAnalysisStatus, 
-    setModelActive 
+    setModelActive,
+    shouldAutoPlay,
+    externalPlayControl,
+    setShouldAutoPlay,
+    setExternalPlayControl
   } = useOperationStore()
   
   // MQTT connection hook - only when analysis is running
@@ -47,10 +51,7 @@ const AnalysisPage = ({ operationId }) => {
     }
   }, [operationId, loadOperation])
 
-  // Debug: Monitor analysis status changes
-  useEffect(() => {
-    console.log('🔄 Analysis status changed to:', analysisStatus)
-  }, [analysisStatus])
+
 
   // Start analysis function
   const startAnalysis = async () => {
@@ -67,6 +68,16 @@ const AnalysisPage = ({ operationId }) => {
         console.log('Setting analysis status to running...')
         setAnalysisStatus('running')
         console.log('Analysis started successfully:', result.message)
+        
+        // Video'yu otomatik başlat - ML model başladıktan sonra
+        setShouldAutoPlay(true) // Video player'ın autoplay özelliğini aktifleştir
+        
+        // Video player'ın hazır olması için daha uzun bekle
+        setTimeout(() => {
+          setExternalPlayControl(true) // External play komutu gönder
+          handlePlayStateChange(true) // State'i güncelle
+        }, 3000) // 3 saniye bekle video player kesinlikle hazır olsun
+        
       } else {
         throw new Error(result.message || 'Failed to start analysis')
       }
@@ -81,8 +92,16 @@ const AnalysisPage = ({ operationId }) => {
   // Stop analysis function
   const stopAnalysis = async () => {
     try {
+      // Video'yu durdur
+      setExternalPlayControl(false)
+      handlePlayStateChange(false)
+      
+      // State'leri temizle
       setAnalysisStatus('idle')
       setModelActive(false)
+      setShouldAutoPlay(false)
+      setExternalPlayControl(null)
+      
       await mlModelService.stopAnalysis()
     } catch (error) {
       console.error('Failed to stop analysis:', error)
@@ -242,6 +261,8 @@ const AnalysisPage = ({ operationId }) => {
                 onTimeUpdate={handlePlayStateChange}
                 cameraId={currentOperation.room}
                 className="flex-1"
+                shouldAutoPlay={shouldAutoPlay}
+                externalPlayControl={externalPlayControl}
               />
             </VideoPlayerErrorBoundary>
           )}

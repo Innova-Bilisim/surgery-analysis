@@ -4,7 +4,9 @@ class MLModelService {
   constructor() {
     this.isRunning = false
     this.currentSession = null
-    this.analyzeUrl = 'http://10.10.10.210:13000/analyze'
+    // Use environment variable with fallback
+    const baseUrl = process.env.NEXT_PUBLIC_ML_MODEL_URL || 'http://10.10.10.210:13000'
+    this.analyzeUrl = `${baseUrl}/analyze`
   }
 
   async startAnalysis(operationData) {

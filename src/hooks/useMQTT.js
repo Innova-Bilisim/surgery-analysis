@@ -9,6 +9,7 @@ const useMQTT = (enabled = true) => {
   const [error, setError] = useState(null)
   const [retryAttempts, setRetryAttempts] = useState(0)
   const [isEnabled, setIsEnabled] = useState(enabled) // MQTT enabled flag
+  const [lastStage, setLastStage] = useState(null) // Son stage'i sakla
   
   const { addEvent, setMqttConnected, currentOperation } = useOperationStore()
 
@@ -22,6 +23,7 @@ const useMQTT = (enabled = true) => {
     setError(null)
     if (data.connected) {
       setRetryAttempts(0) // Reset retry attempts on successful connection
+      setLastStage(null) // Reset last stage on new connection
     }
   }, [setMqttConnected])
 
@@ -49,36 +51,74 @@ const useMQTT = (enabled = true) => {
     }
   }, [setMqttConnected, retryAttempts])
 
-
-
-    // surgery/stage topic handler - Simple timestamp + event format
+  // surgery/stage topic handler - Geliştirilmiş stage handling
   const handleSurgeryStage = useCallback((message) => {
     try {
       console.log('Received surgery analysis:', message)
       
-      // Expected format: { timestamp, event }
+      // Surgery type mesajını ignore et
+      if (message.surgery_type && message.file_name) {
+        console.log('📋 Surgery info received:', message.surgery_type, message.file_name)
+        return
+      }
+      
+      // SADECE BEGIN MESAJLARINI KABUL ET
+      if (!message.begin) {
+        console.log('⏭️ Ignoring non-begin message')
+        return
+      }
+      
+      const currentStage = message.stage
+      const timestamp = message.begin
+      
+      // currentStage kontrolü
+      if (!currentStage || typeof currentStage !== 'string') {
+        console.log('⚠️ No valid stage found in begin message:', message)
+        return
+      }
+      
+      // Eğer aynı stage ise, event ekleme
+      if (lastStage === currentStage) {
+        console.log(`🔄 Ignoring duplicate stage: ${currentStage}`)
+        return
+      }
+      
+      // Yeni stage - event ekle
+      console.log(`✨ New surgery stage detected: ${lastStage || 'None'} → ${currentStage}`)
+      setLastStage(currentStage)
+      
+      // Stage ismini temizle ve anlamlı hale getir
+      const cleanStageName = currentStage
+        .replace(/_/g, ' ')
+        .replace(/Stage$/, '')
+        .replace(/([A-Z])/g, ' $1')
+        .trim()
+        .replace(/^\w/, c => c.toUpperCase())
+      
+      // Sadece stage begin event'i oluştur
       const event = {
         id: `surgery_${Date.now()}_${Math.random().toString(16).substr(2, 8)}`,
         operationId: currentOperation?.id || null,
-        timestamp: message.timestamp || new Date().toISOString(),
-        type: 'analysis',
-        description: message.event || 'Surgery event detected',
-        severity: 'medium',
+        timestamp: timestamp,
+        type: 'stage_begin',
+        description: `Started: ${cleanStageName}`,
+        severity: 'high',
         source: 'mqtt',
         confidence: null,
-        stage: null,
+        stage: currentStage,
         data: message
       }
       
       addEvent(event)
     } catch (error) {
       console.error('Error processing surgery analysis:', error)
+      console.error('Problematic message:', message)
     }
-  }, [addEvent, currentOperation])
+  }, [addEvent, currentOperation, lastStage])
 
 
 
-  const connect = useCallback(async (brokerUrl = 'ws://10.10.10.210:9001') => {
+  const connect = useCallback(async (brokerUrl = null) => {
     if (!isEnabled) {
       console.log('MQTT is disabled, skipping connection')
       return
@@ -94,9 +134,10 @@ const useMQTT = (enabled = true) => {
       mqttService.on('disconnect', handleConnectionChange)
       mqttService.on('error', handleError)
 
-      // Connect to MQTT broker - Always use production server
-      const brokerUrl = 'ws://10.10.10.210:9001'
-      await mqttService.connect(brokerUrl)
+      // Connect to MQTT broker - Use environment variable with fallback
+      const defaultBrokerUrl = process.env.NEXT_PUBLIC_MQTT_WS_URL || 'ws://10.10.10.210:9001'
+      const finalBrokerUrl = brokerUrl || defaultBrokerUrl
+      await mqttService.connect(finalBrokerUrl)
       
       // Subscribe to single topic
       mqttService.subscribe(SURGERY_STAGE_TOPIC, handleSurgeryStage)
@@ -154,8 +195,8 @@ const useMQTT = (enabled = true) => {
         mqttService.on('disconnect', handleConnectionChange)
         mqttService.on('error', handleError)
 
-        // Connect to MQTT broker with timeout - Always use production server
-        const brokerUrl = 'ws://10.10.10.210:9001'
+        // Connect to MQTT broker with timeout - Use environment variable
+        const brokerUrl = process.env.NEXT_PUBLIC_MQTT_WS_URL || 'ws://10.10.10.210:9001'
         const connectPromise = mqttService.connect(brokerUrl)
         const timeoutPromise = new Promise((_, reject) => {
           setTimeout(() => reject(new Error('Connection timeout')), 15000) // Increased timeout for WebSocket

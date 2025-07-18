@@ -13,10 +13,14 @@ const useOperationStore = create(
     isPlaying: false,
     currentTime: '00:00:00',
     totalTime: '02:45:30',
+    shouldAutoPlay: false, // Video auto-play kontrolü
+    externalPlayControl: null, // External play/pause control (true/false/null)
     
     setIsPlaying: (playing) => set({ isPlaying: playing }),
     setCurrentTime: (time) => set((state) => ({ currentTime: typeof time === 'function' ? time(state.currentTime) : time })), // Destek: fonksiyon veya string
     setTotalTime: (time) => set({ totalTime: time }),
+    setShouldAutoPlay: (autoplay) => set({ shouldAutoPlay: autoplay }),
+    setExternalPlayControl: (control) => set({ externalPlayControl: control }),
     
     // Events State
     events: [],
@@ -48,6 +52,8 @@ const useOperationStore = create(
       isPlaying: false,
       currentTime: '00:00:00',
       totalTime: '02:45:30',
+      shouldAutoPlay: false,
+      externalPlayControl: null,
       events: [],
       isModelActive: false,
       modelStartTime: null,

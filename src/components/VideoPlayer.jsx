@@ -4,13 +4,15 @@ import { useEffect, useRef, useState, useCallback } from 'react'
 
 const VideoPlayer = ({ 
   isLive = false, 
-  videoSrc = '/videos/video01.mp4',
+  videoSrc = null, // Will use environment variables for default
   currentTime, 
   totalTime, 
   onTimeUpdate, 
   className = "",
   cameraId = "1",
-  streamUrl = null // For live HLS streams
+  streamUrl = null, // For live HLS streams
+  shouldAutoPlay = false, // External control for autoplay
+  externalPlayControl = null // External play/pause control from parent
 }) => {
   const videoRef = useRef(null)
   const playerRef = useRef(null)
@@ -25,27 +27,59 @@ const VideoPlayer = ({
   // Mount state for DOM readiness
   const [isDOMReady, setIsDOMReady] = useState(false)
   
+  // External play control effect
+  useEffect(() => {
+    if (!playerRef.current || !isReady) return
+    
+    const player = playerRef.current
+    
+    if (externalPlayControl === true && player.paused()) {
+      player.play().catch(e => {
+        console.log('External play failed:', e.message)
+      })
+    } else if (externalPlayControl === false && !player.paused()) {
+      player.pause()
+    }
+  }, [externalPlayControl, isReady])
+
   // DOM readiness effect
   useEffect(() => {
     if (!mounted) return
     
+    let retryCount = 0
+    const maxRetries = 20
+    
     const checkDOMReady = () => {
-      if (videoRef.current && 
-          videoRef.current.parentNode && 
-          videoRef.current.isConnected && 
-          containerRef.current && 
-          containerRef.current.isConnected) {
+      const videoEl = videoRef.current
+      const containerEl = containerRef.current
+      const videoReady = videoEl && videoEl.parentNode && videoEl.isConnected
+      const containerReady = containerEl && containerEl.isConnected
+      
+      if (videoReady && containerReady) {
+        setIsDOMReady(true)
+        return true
+      }
+      
+      // Retry if not ready yet
+      retryCount++
+      if (retryCount < maxRetries) {
+        setTimeout(() => {
+          checkDOMReady()
+        }, 200)
+      } else {
+        // Force DOM ready after max retries
         setIsDOMReady(true)
       }
+      
+      return false
     }
     
     // Check immediately
     checkDOMReady()
     
-    // Also check after a brief delay to ensure DOM is stable
-    const timer = setTimeout(checkDOMReady, 100)
-    
-    return () => clearTimeout(timer)
+    return () => {
+      retryCount = maxRetries // Stop retries on unmount
+    }
   }, [mounted])
 
   // Mark component as mounted
@@ -56,23 +90,16 @@ const VideoPlayer = ({
     // Dynamically import Video.js only on client side
     const loadVideojs = async () => {
       try {
-        console.log('🎬 Loading Video.js library...')
         const videojsModule = await import('video.js')
         const videojsDefault = videojsModule.default
-        console.log('🎬 Video.js module loaded:', !!videojsDefault)
         
         // Import CSS
-        console.log('🎬 Loading Video.js CSS...')
         await import('video.js/dist/video-js.css')
-        console.log('🎬 Video.js CSS loaded')
         
         // Import HLS plugin
-        console.log('🎬 Loading HLS plugin...')
         await import('@videojs/http-streaming/dist/videojs-http-streaming.min.js')
-        console.log('🎬 HLS plugin loaded')
         
         setVideojs(() => videojsDefault)
-        console.log('🎬 Video.js setup complete!')
       } catch (error) {
         console.error('🎬 Failed to load Video.js:', error)
         setError('Failed to load video player library')
@@ -94,8 +121,14 @@ const VideoPlayer = ({
         type: streamUrl.includes('.m3u8') ? 'application/x-mpegURL' : 'application/dash+xml'
       }
     }
+    
+    // Use environment variables for video path
+    const videoBasePath = process.env.NEXT_PUBLIC_VIDEO_BASE_PATH || '/videos'
+    const defaultVideo = process.env.NEXT_PUBLIC_DEFAULT_VIDEO || 'video01.mp4'
+    const finalVideoSrc = videoSrc || `${videoBasePath}/${defaultVideo}`
+    
     return {
-      src: videoSrc,
+      src: finalVideoSrc,
       type: 'video/mp4'
     }
   }, [isLive, streamUrl, videoSrc])
@@ -167,7 +200,6 @@ const VideoPlayer = ({
   const cleanupPlayer = useCallback(() => {
     if (playerRef.current) {
       try {
-        console.log('Cleaning up player...')
         const player = playerRef.current
         
         // Remove all event listeners
@@ -187,45 +219,34 @@ const VideoPlayer = ({
 
   // Initialize player with proper DOM checks
   const initializePlayer = useCallback(async () => {
-    console.log('🎬 InitializePlayer called - mounted:', mounted, 'videojs:', !!videojs, 'isDOMReady:', isDOMReady)
-    
     if (cleanupRef.current || !mounted || !videojs || !isDOMReady) {
-      console.log('🎬 InitializePlayer early return - cleanup:', cleanupRef.current, 'mounted:', mounted, 'videojs:', !!videojs, 'isDOMReady:', isDOMReady)
       return
     }
     
     // Ensure video element exists and is in DOM
     if (!videoRef.current || !videoRef.current.parentNode || !videoRef.current.isConnected) {
-      console.log('🎬 Video element not ready in DOM yet')
       return
     }
     
     // Additional container check
     if (!containerRef.current || !containerRef.current.isConnected) {
-      console.log('🎬 Container element not ready in DOM yet')
       return
     }
-    
-    console.log('🎬 Initializing Video.js player for file playback...')
 
     try {
       const config = getPlayerConfig()
-      console.log('🎬 Player config:', config)
       
       const player = videojs(videoRef.current, config, function onPlayerReady() {
         if (cleanupRef.current) return
-        console.log('🎬 Player is ready!')
+        
         setIsReady(true)
         setError(null)
 
         // Video.js best practice: ensure player is truly ready
         this.ready(() => {
-          console.log('🎬 Player fully initialized!')
-          
           // Load the video source explicitly
           if (config.sources && config.sources.length > 0) {
             this.src(config.sources)
-            console.log('🎬 Video source set:', config.sources[0].src)
           }
         })
 
@@ -255,7 +276,7 @@ const VideoPlayer = ({
           }
 
           // Auto-play video
-          if (!isLive) {
+          if (!isLive && shouldAutoPlay) {
             // Small delay to ensure everything is loaded
             setTimeout(() => {
               if (!cleanupRef.current && this.readyState() >= 1) {
@@ -284,8 +305,6 @@ const VideoPlayer = ({
           return
         }
 
-        console.log('Player is ready!')
-        
         // Hide and disable fullscreen button
         const fullscreenToggle = player.controlBar?.fullscreenToggle
         if (fullscreenToggle) {
@@ -367,10 +386,22 @@ const VideoPlayer = ({
         console.log('🎬 Video can start playing')
       })
 
-      player.on('canplaythrough', () => {
+      player.on('canplaythrough', function() {
         if (cleanupRef.current) return
         console.log('🎬 Video can play through without stopping')
         setIsReady(true) // Ensure ready state is set when video is playable
+        
+        // Auto-play işlemini burada da dene
+        if (shouldAutoPlay && !isLive) {
+          const currentPlayer = this // Video.js player context
+          setTimeout(() => {
+            if (!cleanupRef.current && currentPlayer.paused()) {
+              currentPlayer.play().catch(e => {
+                console.log('Auto-play from canplaythrough failed:', e.message)
+              })
+            }
+          }, 500)
+        }
       })
 
       player.on('loadedmetadata', () => {

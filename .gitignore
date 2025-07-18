@@ -40,7 +40,7 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
-# Video files
+# Video files - excluded from Git due to large file sizes
 /public/videos/
 *.mp4
 *.avi
@@ -48,3 +48,6 @@ next-env.d.ts
 *.wmv
 *.flv
 *.webm
+
+# Specific video files you don't want to track
+public/videos/large-video.mp4

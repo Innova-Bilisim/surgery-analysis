@@ -1,0 +1,54 @@
+version: '3.8'
+
+services:
+  surgery-analysis:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    container_name: surgery-analysis-web
+    restart: unless-stopped
+    network_mode: "host"  # Host network kullan ki localhost erişimi çalışsın
+    volumes:
+      # Log dosyaları için (opsiyonel)
+      - ./logs:/app/logs
+      # Video dosyaları için - sunucudaki video klasörünü mount et
+      - ../public/videos:/app/public/videos:ro
+    env_file:
+      - .env.production  # .env.production dosyasından oku
+    environment:
+      - NODE_ENV=production
+      - NEXT_TELEMETRY_DISABLED=1
+    # network_mode: "host" kullanıldığı için networks gerekmez
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    depends_on: []
+    
+  # Nginx reverse proxy (opsiyonel)
+  nginx:
+    image: nginx:alpine
+    container_name: surgery-analysis-nginx
+    restart: unless-stopped
+    network_mode: "host"  # Host network kullan ki localhost:3000 erişimi çalışsın
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/ssl:/etc/nginx/ssl:ro
+    # network_mode: "host" kullanıldığı için networks gerekmez
+    depends_on:
+      - surgery-analysis
+    profiles:
+      - with-nginx
+
+networks:
+  surgery-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
+
+volumes:
+  surgery-logs:
+    driver: local 
