@@ -8,6 +8,7 @@ const VideoPlayer = ({
   currentTime, 
   totalTime, 
   onTimeUpdate, 
+  onDurationUpdate, // New prop for duration updates
   className = "",
   cameraId = "1",
   streamUrl = null, // For live HLS streams
@@ -357,6 +358,17 @@ const VideoPlayer = ({
         if (onTimeUpdate) onTimeUpdate(false)
       })
 
+      player.on('timeupdate', () => {
+        if (cleanupRef.current) return
+        const currentTimeSeconds = player.currentTime()
+        if (onDurationUpdate && typeof onDurationUpdate === 'function') {
+          // Send current time to parent - we'll reuse onDurationUpdate for time updates
+          if (currentTimeSeconds >= 0) {
+            onDurationUpdate(currentTimeSeconds, 'timeupdate')
+          }
+        }
+      })
+
       player.on('error', (e) => {
         if (cleanupRef.current) return
         console.error('🎬 Player error:', e)
@@ -407,11 +419,25 @@ const VideoPlayer = ({
       player.on('loadedmetadata', () => {
         if (cleanupRef.current) return
         console.log('🎬 Video metadata loaded')
+        
+        // Send duration to parent component
+        if (onDurationUpdate && player.duration && player.duration() > 0) {
+          const duration = player.duration()
+          console.log('🎬 Video duration:', duration, 'seconds')
+          onDurationUpdate(duration, 'duration')
+        }
       })
 
       player.on('durationchange', () => {
         if (cleanupRef.current) return
-        console.log('🎬 Video duration available:', player.duration())
+        const duration = player.duration()
+        console.log('🎬 Video duration available:', duration)
+        
+        // Send duration to parent component
+        if (onDurationUpdate && duration > 0) {
+          console.log('🎬 Sending duration to parent:', duration, 'seconds')
+          onDurationUpdate(duration, 'duration')
+        }
       })
 
       player.on('progress', () => {

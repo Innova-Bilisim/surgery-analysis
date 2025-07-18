@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect } from 'react'
+import { useEffect, useCallback } from 'react'
 import { ArrowLeft, Clock, User, UserCheck, Activity, AlertCircle, Play } from 'lucide-react'
 import VideoPlayer from '@/components/VideoPlayer'
 import VideoPlayerErrorBoundary from '@/components/VideoPlayerErrorBoundary'
@@ -22,8 +22,11 @@ const AnalysisPage = ({ operationId }) => {
   const { 
     isPlaying, 
     currentTime, 
+    totalTime,
     handlePlayStateChange, 
-    isModelActive 
+    handleRealTimeUpdate,
+    isModelActive,
+    setVideoDuration
   } = useVideoControl()
   
   // Store state
@@ -50,6 +53,19 @@ const AnalysisPage = ({ operationId }) => {
       loadOperation(operationId)
     }
   }, [operationId, loadOperation])
+
+  // Handle video duration and time updates
+  const handleVideoUpdate = useCallback((value, type) => {
+    if (type === 'timeupdate') {
+      // Handle time updates (sol taraf - geçen zaman)
+      console.log('⏱️ Time update:', value, 'seconds')
+      handleRealTimeUpdate(value)
+    } else {
+      // Handle duration updates (sağ taraf - toplam süre)
+      console.log('📏 Duration update:', value, 'seconds')
+      setVideoDuration(value)
+    }
+  }, [handleRealTimeUpdate, setVideoDuration])
 
 
 
@@ -218,7 +234,7 @@ const AnalysisPage = ({ operationId }) => {
         
         <div className="flex items-center gap-2 font-semibold text-primary-400">
           <Clock className="w-5 h-5" />
-          <span>{currentTime} / 02:45:30</span>
+          <span>{currentTime} / {totalTime || '00:00:00'}</span>
         </div>
       </div>
 
@@ -257,8 +273,9 @@ const AnalysisPage = ({ operationId }) => {
                 isLive={false}
                 videoSrc="/videos/video01.mp4"
                 currentTime={currentTime}
-                totalTime="02:45:30"
+                totalTime={totalTime}
                 onTimeUpdate={handlePlayStateChange}
+                onDurationUpdate={handleVideoUpdate}
                 cameraId={currentOperation.room}
                 className="flex-1"
                 shouldAutoPlay={shouldAutoPlay}

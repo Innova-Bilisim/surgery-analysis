@@ -57,7 +57,7 @@ const OperationSelection = () => {
   const calendarDays = getDaysInMonth(currentMonth)
 
   return (
-    <div className="h-screen bg-gradient-to-br from-slate-50 to-blue-100 p-8 overflow-hidden flex flex-col">
+    <div className="h-screen bg-gradient-to-br from-slate-300 to-blue-400 p-8 overflow-hidden flex flex-col">
       {/* Header - FIXED */}
       <div className="flex justify-between items-center mb-8 bg-white p-6 rounded-xl shadow-lg flex-shrink-0 min-h-[80px]">
         <div className="flex items-center gap-4">
@@ -75,37 +75,37 @@ const OperationSelection = () => {
       {/* Content */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 flex-1 min-h-0">
         {/* Calendar Section - FIXED */}
-        <div className="bg-white p-8 rounded-xl shadow-lg flex flex-col overflow-hidden min-h-[500px]">
+        <div className="bg-white p-6 rounded-xl shadow-lg flex flex-col overflow-hidden min-h-[600px] h-full">
           <div className="flex justify-between items-center mb-8 flex-shrink-0 min-h-[60px]">
             <button 
               onClick={() => navigateMonth('prev')} 
-              className="bg-gray-100 hover:bg-gray-200 p-3 rounded-lg transition-all duration-200 hover:scale-105 flex-shrink-0"
+              className="bg-blue-500 hover:bg-blue-600 text-white p-4 rounded-xl transition-all duration-200 hover:scale-105 flex-shrink-0 shadow-lg"
             >
-              <ChevronLeft className="w-5 h-5" />
+              <ChevronLeft className="w-6 h-6" />
             </button>
             <h2 className="text-xl font-semibold text-gray-900 px-4 text-center flex-grow">
               {currentMonth.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
             </h2>
             <button 
               onClick={() => navigateMonth('next')} 
-              className="bg-gray-100 hover:bg-gray-200 p-3 rounded-lg transition-all duration-200 hover:scale-105 flex-shrink-0"
+              className="bg-blue-500 hover:bg-blue-600 text-white p-4 rounded-xl transition-all duration-200 hover:scale-105 flex-shrink-0 shadow-lg"
             >
-              <ChevronRight className="w-5 h-5" />
+              <ChevronRight className="w-6 h-6" />
             </button>
           </div>
           
-          <div className="flex-1 flex flex-col min-h-0">
+          <div className="flex-1 flex flex-col min-h-0 h-full">
             {/* Weekdays */}
-            <div className="grid grid-cols-7 gap-2 mb-4 flex-shrink-0">
+            <div className="grid grid-cols-7 gap-1.5 mb-4 flex-shrink-0">
               {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(day => (
-                <div key={day} className="text-center font-semibold text-gray-600 p-3 text-sm">
+                <div key={day} className="text-center font-semibold text-gray-600 p-2 text-lg">
                   {day}
                 </div>
               ))}
             </div>
             
             {/* Days */}
-            <div className="grid grid-cols-7 gap-2 flex-1 grid-rows-6">
+            <div className="grid grid-cols-7 gap-1.5 flex-1 grid-rows-6 content-start">
               {calendarDays.map((day, index) => {
                 if (!day) {
                   return <div key={index} className="aspect-square"></div>
@@ -119,19 +119,19 @@ const OperationSelection = () => {
                   <div
                     key={day.toISOString()}
                     className={`
-                      aspect-square border rounded-lg flex flex-col items-center justify-center cursor-pointer transition-all duration-200 relative
+                      min-h-[3rem] border rounded-lg flex flex-col items-center justify-center cursor-pointer transition-all duration-200 relative
                       ${isSelected 
                         ? 'bg-blue-500 text-white border-blue-600' 
-                        : 'bg-white border-gray-200 hover:bg-gray-50 hover:scale-105'
+                        : 'bg-white border-gray-200 hover:bg-gray-50 hover:scale-105 text-gray-900'
                       }
                       ${isToday ? 'border-2 border-amber-400' : ''}
                       ${operations.length > 0 ? 'border-2 border-emerald-400' : ''}
                     `}
                     onClick={() => setSelectedDate(day)}
                   >
-                    <span className="font-semibold">{day.getDate()}</span>
+                    <span className="font-semibold text-lg">{day.getDate()}</span>
                     {operations.length > 0 && (
-                      <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center font-semibold">
+                      <span className="absolute -top-2 -right-2 bg-red-500 text-white text-sm rounded-full w-8 h-8 flex items-center justify-center font-bold shadow-lg">
                         {operations.length}
                       </span>
                     )}
