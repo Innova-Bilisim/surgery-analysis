@@ -16,7 +16,7 @@ const nextConfig = {
   // Environment variables for client-side
   env: {
     // These will be available in the browser
-    NEXT_PUBLIC_ML_MODEL_URL: process.env.NEXT_PUBLIC_ML_MODEL_URL || 'http://10.10.10.210:13000',
+    NEXT_PUBLIC_ML_MODEL_URL: process.env.NEXT_PUBLIC_ML_MODEL_URL || 'http://10.10.10.210:8000',
     NEXT_PUBLIC_MQTT_WS_URL: process.env.NEXT_PUBLIC_MQTT_WS_URL || 'ws://10.10.10.210:9001',
     NEXT_PUBLIC_VIDEO_BASE_PATH: process.env.NEXT_PUBLIC_VIDEO_BASE_PATH || '/videos',
     NEXT_PUBLIC_DEFAULT_VIDEO: process.env.NEXT_PUBLIC_DEFAULT_VIDEO || 'video01.mp4',

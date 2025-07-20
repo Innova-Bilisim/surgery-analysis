@@ -10,7 +10,7 @@ export async function GET() {
       version: process.env.npm_package_version || '1.0.0',
       services: {
         mlModel: {
-          url: process.env.NEXT_PUBLIC_ML_MODEL_URL || 'http://10.10.10.210:13000',
+          url: process.env.NEXT_PUBLIC_ML_MODEL_URL || 'http://10.10.10.210:8000',
           status: 'external' // External service, not checked
         },
         mqtt: {
