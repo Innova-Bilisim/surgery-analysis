@@ -130,10 +130,10 @@ cp your-key.pem nginx/ssl/key.pem
 
 ```bash
 # ML Model Service URL
-NEXT_PUBLIC_ML_MODEL_URL=http://localhost:8000
+NEXT_PUBLIC_ML_MODEL_URL=http://10.10.10.210:8000
 
 # MQTT WebSocket URL  
-NEXT_PUBLIC_MQTT_WS_URL=ws://localhost:9001
+NEXT_PUBLIC_MQTT_WS_URL=ws://10.10.10.210:9001
 
 # Video Configuration
 NEXT_PUBLIC_VIDEO_BASE_PATH=/videos
