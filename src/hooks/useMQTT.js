@@ -4,6 +4,17 @@ import { useEffect, useCallback, useState } from 'react'
 import mqttService from '@/services/mqttService'
 import useOperationStore from '@/stores/operationStore'
 
+// Tool names constant
+const TOOL_NAMES = [
+  "Grasper", "Bipolar", "Hook", "Scissors",
+  "Clipper", "Irrigator", "SpecimenBag"
+]
+
+const PHASE_NAMES = [
+  "Preparation", "CalotTriangleDissection", "ClippingCutting", "GallbladderDissection",
+  "GallbladderPackaging", "CleaningCoagulation", "GallbladderRetraction"
+]
+
 const useMQTT = (enabled = true, activeModel = null) => {
   const [connectionStatus, setConnectionStatus] = useState('disconnected')
   const [error, setError] = useState(null)
@@ -18,16 +29,7 @@ const useMQTT = (enabled = true, activeModel = null) => {
   const SURGERY_TOOL_TOPIC = 'surgery/tool'
   const SURGERY_STATUS_TOPIC = 'surgery/status'
 
-  // Tool names constant
-  const TOOL_NAMES = [
-    "Grasper", "Bipolar", "Hook", "Scissors",
-    "Clipper", "Irrigator", "SpecimenBag"
-  ]
 
-  const PHASE_NAMES = [
-    "Preparation", "CalotTriangleDissection", "ClippingCutting", "GallbladderDissection",
-    "GallbladderPackaging", "CleaningCoagulation", "GallbladderRetraction"
-  ]
 
   // Stage renk mappingi
   const getStageColor = useCallback((stageName) => {
@@ -76,7 +78,7 @@ const useMQTT = (enabled = true, activeModel = null) => {
         setRetryAttempts(0)
       }, 30000)
     }
-  }, [setMqttConnected, retryAttempts])
+  }, [setMqttConnected])
 
   // surgery/stage topic handler - Geliştirilmiş stage handling
   const handleSurgeryStage = useCallback((message) => {
@@ -142,14 +144,14 @@ const useMQTT = (enabled = true, activeModel = null) => {
       console.error('Error processing surgery analysis:', error)
       console.error('Problematic message:', message)
     }
-  }, [addEvent, currentOperation, lastStage])
+  }, [addEvent, currentOperation, lastStage, getStageColor])
 
   // surgery/tool topic handler - Tool detection
   const handleSurgeryTools = useCallback((message) => {
     try {
       console.log('Received tool detection:', message)
       
-      const newTools = message.tools || []
+      const newTools = message.tool || []
       const timestamp = message.datetime
       
       // Validate incoming tools
@@ -231,7 +233,7 @@ const useMQTT = (enabled = true, activeModel = null) => {
       console.error('Error processing tool detection:', error)
       console.error('Problematic message:', message)
     }
-  }, [addEvent, currentOperation, detectedTools, setDetectedTools, TOOL_NAMES])
+  }, [addEvent, currentOperation, detectedTools, setDetectedTools])
 
 
 
@@ -382,7 +384,7 @@ const useMQTT = (enabled = true, activeModel = null) => {
       setMqttConnected(false)
       setError(null)
     }
-  }, [isEnabled, activeModel, handleConnectionChange, handleError, handleSurgeryStage, handleSurgeryTools, setMqttConnected])
+  }, [isEnabled, activeModel])
 
   return {
     connectionStatus,

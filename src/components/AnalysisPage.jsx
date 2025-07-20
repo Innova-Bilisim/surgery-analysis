@@ -56,6 +56,8 @@ const AnalysisPage = ({ operationId }) => {
     "Clipper", "Irrigator", "SpecimenBag"
   ]
 
+  // ✅ Video player force reset için key state
+  const [videoPlayerKey, setVideoPlayerKey] = useState(0)
 
   // Load operation on component mount
   useEffect(() => {
@@ -84,6 +86,13 @@ const AnalysisPage = ({ operationId }) => {
     if (!currentOperation) return
 
     try {
+      // ✅ Önceki analysis varsa önce temizle
+      if (analysisStatus === 'running') {
+        await stopAnalysis()
+        // Kısa bekleme - video player'ın temizlenmesi için
+        await new Promise(resolve => setTimeout(resolve, 500))
+      }
+
       setAnalysisStatus('starting')
       setActiveModel('tool-detection')
       setModelActive(true)
@@ -152,18 +161,25 @@ const AnalysisPage = ({ operationId }) => {
   // Stop analysis function
   const stopAnalysis = async () => {
     try {
-      // Video'yu durdur
+      console.log('🛑 Stopping analysis and resetting video player')
+      
+      // 1. ML Service'i durdur
+      await mlModelService.stopAnalysis()
+      
+      // 2. Video'yu durdur
       setExternalPlayControl(false)
       handlePlayStateChange(false)
       
-      // State'leri temizle
+      // 3. State'leri temizle
       setAnalysisStatus('idle')
       setActiveModel(null)
       setModelActive(false)
       setShouldAutoPlay(false)
       setExternalPlayControl(null)
       
-      await mlModelService.stopAnalysis()
+      // 4. ✅ Video player'ı force reset etmek için unique key değiştir
+      setVideoPlayerKey(prev => prev + 1) // Bu state'i ekle
+      
     } catch (error) {
       console.error('Failed to stop analysis:', error)
     }
@@ -385,20 +401,22 @@ const AnalysisPage = ({ operationId }) => {
             </div>
           ) : (
             // Video Player (Running State)
-            <VideoPlayerErrorBoundary>
-              <VideoPlayer 
-                isLive={false}
-                videoSrc="/videos/video01.mp4"
-                currentTime={currentTime}
-                totalTime={totalTime}
-                onTimeUpdate={handlePlayStateChange}
-                onDurationUpdate={handleVideoUpdate}
-                cameraId={currentOperation.room}
-                className="flex-1"
-                shouldAutoPlay={shouldAutoPlay}
-                externalPlayControl={externalPlayControl}
-              />
-            </VideoPlayerErrorBoundary>
+            <div key={`video-player-${activeModel}-${videoPlayerKey}`}>
+              <VideoPlayerErrorBoundary>
+                <VideoPlayer 
+                  isLive={false}
+                  videoSrc="/videos/video01.mp4"
+                  currentTime={currentTime}
+                  totalTime={totalTime}
+                  onTimeUpdate={handlePlayStateChange}
+                  onDurationUpdate={handleVideoUpdate}
+                  cameraId={currentOperation.room}
+                  className="flex-1"
+                  shouldAutoPlay={shouldAutoPlay}
+                  externalPlayControl={externalPlayControl}
+                />
+              </VideoPlayerErrorBoundary>
+            </div>
           )}
         </div>
 
