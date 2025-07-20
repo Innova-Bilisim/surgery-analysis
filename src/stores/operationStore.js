@@ -59,7 +59,17 @@ const useOperationStore = create(
     
     // Analysis State
     analysisStatus: 'idle', // idle, starting, running, stopped
+    activeModel: null, // null, 'tool-detection', 'stage-analysis'
     setAnalysisStatus: (status) => set({ analysisStatus: status }),
+    setActiveModel: (model) => set({ activeModel: model }),
+    
+    // Tool Detection State
+    detectedTools: [], // Array of currently detected tool names
+    toolsLastUpdate: null, // Timestamp of last tool update
+    setDetectedTools: (tools, timestamp) => set({ 
+      detectedTools: tools,
+      toolsLastUpdate: timestamp || new Date().toISOString()
+    }),
     
     // Actions
     resetAll: () => set({
@@ -73,7 +83,10 @@ const useOperationStore = create(
       isModelActive: false,
       modelStartTime: null,
       mqttConnected: false,
-      analysisStatus: 'idle'
+      analysisStatus: 'idle',
+      activeModel: null,
+      detectedTools: [],
+      toolsLastUpdate: null
     })
   }))
 )

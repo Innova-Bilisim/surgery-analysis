@@ -130,7 +130,7 @@ cp your-key.pem nginx/ssl/key.pem
 
 ```bash
 # ML Model Service URL
-NEXT_PUBLIC_ML_MODEL_URL=http://localhost:13000
+NEXT_PUBLIC_ML_MODEL_URL=http://localhost:8000
 
 # MQTT WebSocket URL  
 NEXT_PUBLIC_MQTT_WS_URL=ws://localhost:9001

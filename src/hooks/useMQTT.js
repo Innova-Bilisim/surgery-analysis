@@ -11,10 +11,37 @@ const useMQTT = (enabled = true) => {
   const [isEnabled, setIsEnabled] = useState(enabled) // MQTT enabled flag
   const [lastStage, setLastStage] = useState(null) // Son stage'i sakla
   
-  const { addEvent, setMqttConnected, currentOperation } = useOperationStore()
+  const { addEvent, setMqttConnected, currentOperation, setDetectedTools, detectedTools } = useOperationStore()
 
   // Single topic for all surgery analysis
   const SURGERY_STAGE_TOPIC = 'surgery/stage'
+  const SURGERY_TOOL_TOPIC = 'surgery/tool'
+  const SURGERY_STATUS_TOPIC = 'surgery/status'
+
+  // Tool names constant
+  const TOOL_NAMES = [
+    "Grasper", "Bipolar", "Hook", "Scissors",
+    "Clipper", "Irrigator", "SpecimenBag"
+  ]
+
+  const PHASE_NAMES = [
+    "Preparation", "CalotTriangleDissection", "ClippingCutting", "GallbladderDissection",
+    "GallbladderPackaging", "CleaningCoagulation", "GallbladderRetraction"
+  ]
+
+  // Stage renk mappingi
+const getStageColor = (stageName) => {
+  const stageColors = {
+    "Preparation": "blue",
+    "CalotTriangleDissection": "emerald", 
+    "ClippingCutting": "purple",
+    "GallbladderDissection": "amber",
+    "GallbladderPackaging": "rose",
+    "CleaningCoagulation": "orange",
+    "GallbladderRetraction": "cyan"
+  }
+  return stageColors[stageName] || "gray"
+}
 
   const handleConnectionChange = useCallback((data) => {
     const status = data.connected ? 'connected' : 'disconnected'
@@ -106,6 +133,7 @@ const useMQTT = (enabled = true) => {
         source: 'mqtt',
         confidence: null,
         stage: currentStage,
+        stageColor: getStageColor(currentStage),
         data: message
       }
       
@@ -115,6 +143,95 @@ const useMQTT = (enabled = true) => {
       console.error('Problematic message:', message)
     }
   }, [addEvent, currentOperation, lastStage])
+
+  // surgery/tool topic handler - Tool detection
+  const handleSurgeryTools = useCallback((message) => {
+    try {
+      console.log('Received tool detection:', message)
+      
+      const newTools = message.tools || []
+      const timestamp = message.datetime
+      
+      // Validate incoming tools
+      const validTools = newTools.filter(tool => TOOL_NAMES.includes(tool))
+      
+      console.log(`🔧 Tools detected: [${validTools.join(', ')}]`)
+      
+      // Update store with detected tools
+      setDetectedTools(validTools, timestamp)
+      
+      // Check for significant changes to create events
+      const prevTools = detectedTools || []
+      const newlyDetected = validTools.filter(tool => !prevTools.includes(tool))
+      const removed = prevTools.filter(tool => !validTools.includes(tool))
+      
+      // Create events for significant changes
+      if (newlyDetected.length > 0) {
+        const event = {
+          id: `tool_detected_${Date.now()}_${Math.random().toString(16).substr(2, 8)}`,
+          operationId: currentOperation?.id || null,
+          timestamp: timestamp || new Date().toISOString(),
+          type: 'tool_detected',
+          description: `Tool detected: ${newlyDetected.join(', ')}`,
+          severity: 'medium',
+          source: 'mqtt',
+          confidence: null,
+          data: { tools: newlyDetected, action: 'detected' }
+        }
+        addEvent(event)
+      }
+      
+      if (removed.length > 0) {
+        const event = {
+          id: `tool_removed_${Date.now()}_${Math.random().toString(16).substr(2, 8)}`,
+          operationId: currentOperation?.id || null,
+          timestamp: timestamp || new Date().toISOString(),
+          type: 'tool_removed',
+          description: `Tool removed: ${removed.join(', ')}`,
+          severity: 'low',
+          source: 'mqtt',
+          confidence: null,
+          data: { tools: removed, action: 'removed' }
+        }
+        addEvent(event)
+      }
+      
+      // Special events
+      if (validTools.length === 0 && prevTools.length > 0) {
+        const event = {
+          id: `tools_inactive_${Date.now()}_${Math.random().toString(16).substr(2, 8)}`,
+          operationId: currentOperation?.id || null,
+          timestamp: timestamp || new Date().toISOString(),
+          type: 'tools_inactive',
+          description: 'All tools inactive',
+          severity: 'low',
+          source: 'mqtt',
+          confidence: null,
+          data: { tools: [], action: 'all_inactive' }
+        }
+        addEvent(event)
+      }
+      
+      if (validTools.length > 1) {
+        const event = {
+          id: `multiple_tools_${Date.now()}_${Math.random().toString(16).substr(2, 8)}`,
+          operationId: currentOperation?.id || null,
+          timestamp: timestamp || new Date().toISOString(),
+          type: 'multiple_tools',
+          description: `Multiple tools active: ${validTools.join(', ')}`,
+          severity: 'medium',
+          source: 'mqtt',
+          confidence: null,
+          data: { tools: validTools, action: 'multiple_active' }
+        }
+        addEvent(event)
+      }
+      
+    } catch (error) {
+      console.error('Error processing tool detection:', error)
+      console.error('Problematic message:', message)
+    }
+  }, [addEvent, currentOperation, detectedTools, setDetectedTools])
 
 
 
@@ -139,10 +256,11 @@ const useMQTT = (enabled = true) => {
       const finalBrokerUrl = brokerUrl || defaultBrokerUrl
       await mqttService.connect(finalBrokerUrl)
       
-      // Subscribe to single topic
+      // Subscribe to topics
       mqttService.subscribe(SURGERY_STAGE_TOPIC, handleSurgeryStage)
+      mqttService.subscribe(SURGERY_TOOL_TOPIC, handleSurgeryTools)
 
-      console.log('MQTT connected and subscribed to surgery/stage topic')
+      console.log('MQTT connected and subscribed to surgery topics')
       
     } catch (error) {
       console.warn('MQTT connection failed (non-blocking):', error.message)
@@ -151,8 +269,9 @@ const useMQTT = (enabled = true) => {
   }, [isEnabled, handleConnectionChange, handleError, handleSurgeryStage, retryAttempts])
 
   const disconnect = useCallback(() => {
-    // Unsubscribe from topic
+    // Unsubscribe from topics
     mqttService.unsubscribe(SURGERY_STAGE_TOPIC, handleSurgeryStage)
+    mqttService.unsubscribe(SURGERY_TOOL_TOPIC, handleSurgeryTools)
 
     // Remove event handlers
     mqttService.off('connect', handleConnectionChange)
@@ -165,7 +284,7 @@ const useMQTT = (enabled = true) => {
     setConnectionStatus('disconnected')
     setMqttConnected(false)
     setError(null)
-  }, [handleConnectionChange, handleError, handleSurgeryStage, setMqttConnected])
+  }, [handleConnectionChange, handleError, handleSurgeryStage, handleSurgeryTools, setMqttConnected])
 
   const publish = useCallback((topic, message) => {
     if (!isEnabled) return false
@@ -206,10 +325,11 @@ const useMQTT = (enabled = true) => {
         
         if (!isActive) return // Component unmounted during connection
         
-        // Subscribe to single topic
+        // Subscribe to topics
         mqttService.subscribe(SURGERY_STAGE_TOPIC, handleSurgeryStage)
+        mqttService.subscribe(SURGERY_TOOL_TOPIC, handleSurgeryTools)
 
-        console.log('MQTT connected and subscribed to surgery/stage topic')
+        console.log('MQTT connected and subscribed to surgery topics')
         
       } catch (error) {
         if (!isActive) return // Component unmounted during connection
@@ -231,6 +351,7 @@ const useMQTT = (enabled = true) => {
       
       // Cleanup - unsubscribe and disconnect
       mqttService.unsubscribe(SURGERY_STAGE_TOPIC, handleSurgeryStage)
+      mqttService.unsubscribe(SURGERY_TOOL_TOPIC, handleSurgeryTools)
       
       // Remove event handlers
       mqttService.off('connect', handleConnectionChange)
@@ -244,7 +365,7 @@ const useMQTT = (enabled = true) => {
       setMqttConnected(false)
       setError(null)
     }
-  }, [isEnabled, handleConnectionChange, handleError, handleSurgeryStage, setMqttConnected])
+  }, [isEnabled, handleConnectionChange, handleError, handleSurgeryStage, handleSurgeryTools, setMqttConnected])
 
   return {
     connectionStatus,

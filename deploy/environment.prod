@@ -7,7 +7,7 @@ PORT=3000
 HOSTNAME=0.0.0.0
 
 # ML Model Service (localhost since all services are on same server)
-NEXT_PUBLIC_ML_MODEL_URL=http://localhost:13000
+NEXT_PUBLIC_ML_MODEL_URL=http://localhost:8000
 
 # MQTT WebSocket (localhost since all services are on same server)
 NEXT_PUBLIC_MQTT_WS_URL=ws://localhost:9001
