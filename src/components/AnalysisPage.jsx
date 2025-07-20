@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useCallback } from 'react'
+import { useEffect, useCallback} from 'react'
 import { ArrowLeft, Clock, User, UserCheck, Activity, AlertCircle, Play, Wrench, List } from 'lucide-react'
 import VideoPlayer from '@/components/VideoPlayer'
 import VideoPlayerErrorBoundary from '@/components/VideoPlayerErrorBoundary'
@@ -12,7 +12,7 @@ import mlModelService from '@/services/mlModelService'
 
 const AnalysisPage = ({ operationId }) => {
   // Custom hooks for business logic
-  const { 
+  const {   
     currentOperation, 
     events, 
     loadOperation, 
@@ -43,6 +43,7 @@ const AnalysisPage = ({ operationId }) => {
     setShouldAutoPlay,
     setExternalPlayControl
   } = useOperationStore()
+
   
   // MQTT connection hook - only when analysis is running
   const { 
@@ -56,8 +57,7 @@ const AnalysisPage = ({ operationId }) => {
     "Clipper", "Irrigator", "SpecimenBag"
   ]
 
-  // ✅ Video player force reset için key state
-  const [videoPlayerKey, setVideoPlayerKey] = useState(0)
+
 
   // Load operation on component mount
   useEffect(() => {
@@ -86,12 +86,6 @@ const AnalysisPage = ({ operationId }) => {
     if (!currentOperation) return
 
     try {
-      // ✅ Önceki analysis varsa önce temizle
-      if (analysisStatus === 'running') {
-        await stopAnalysis()
-        // Kısa bekleme - video player'ın temizlenmesi için
-        await new Promise(resolve => setTimeout(resolve, 500))
-      }
 
       setAnalysisStatus('starting')
       setActiveModel('tool-detection')
@@ -176,9 +170,6 @@ const AnalysisPage = ({ operationId }) => {
       setModelActive(false)
       setShouldAutoPlay(false)
       setExternalPlayControl(null)
-      
-      // 4. ✅ Video player'ı force reset etmek için unique key değiştir
-      setVideoPlayerKey(prev => prev + 1) // Bu state'i ekle
       
     } catch (error) {
       console.error('Failed to stop analysis:', error)
@@ -401,7 +392,7 @@ const AnalysisPage = ({ operationId }) => {
             </div>
           ) : (
             // Video Player (Running State)
-            <div key={`video-player-${activeModel}-${videoPlayerKey}`}>
+            <div key={`video-${activeModel || 'idle'}`}>
               <VideoPlayerErrorBoundary>
                 <VideoPlayer 
                   isLive={false}

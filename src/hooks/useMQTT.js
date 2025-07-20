@@ -78,7 +78,7 @@ const useMQTT = (enabled = true, activeModel = null) => {
         setRetryAttempts(0)
       }, 30000)
     }
-  }, [setMqttConnected])
+  }, [setMqttConnected, retryAttempts])
 
   // surgery/stage topic handler - Geliştirilmiş stage handling
   const handleSurgeryStage = useCallback((message) => {
@@ -161,9 +161,11 @@ const useMQTT = (enabled = true, activeModel = null) => {
       
       // Update store with detected tools
       setDetectedTools(validTools, timestamp)
-      
+
+      const { detectedTools: prevTools } = useOperationStore.getState()
+
       // Check for significant changes to create events
-      const prevTools = detectedTools || []
+      // const prevTools = detectedTools || []
       const newlyDetected = validTools.filter(tool => !prevTools.includes(tool))
       const removed = prevTools.filter(tool => !validTools.includes(tool))
       
@@ -233,7 +235,7 @@ const useMQTT = (enabled = true, activeModel = null) => {
       console.error('Error processing tool detection:', error)
       console.error('Problematic message:', message)
     }
-  }, [addEvent, currentOperation, detectedTools, setDetectedTools])
+  }, [addEvent, currentOperation, setDetectedTools])
 
 
 
@@ -384,7 +386,7 @@ const useMQTT = (enabled = true, activeModel = null) => {
       setMqttConnected(false)
       setError(null)
     }
-  }, [isEnabled, activeModel])
+  }, [isEnabled, activeModel, handleConnectionChange, handleError, handleSurgeryStage, handleSurgeryTools, setMqttConnected])
 
   return {
     connectionStatus,
