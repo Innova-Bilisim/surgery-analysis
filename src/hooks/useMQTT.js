@@ -4,7 +4,7 @@ import { useEffect, useCallback, useState } from 'react'
 import mqttService from '@/services/mqttService'
 import useOperationStore from '@/stores/operationStore'
 
-const useMQTT = (enabled = true) => {
+const useMQTT = (enabled = true, activeModel = null) => {
   const [connectionStatus, setConnectionStatus] = useState('disconnected')
   const [error, setError] = useState(null)
   const [retryAttempts, setRetryAttempts] = useState(0)
@@ -30,18 +30,18 @@ const useMQTT = (enabled = true) => {
   ]
 
   // Stage renk mappingi
-const getStageColor = (stageName) => {
-  const stageColors = {
-    "Preparation": "blue",
-    "CalotTriangleDissection": "emerald", 
-    "ClippingCutting": "purple",
-    "GallbladderDissection": "amber",
-    "GallbladderPackaging": "rose",
-    "CleaningCoagulation": "orange",
-    "GallbladderRetraction": "cyan"
-  }
-  return stageColors[stageName] || "gray"
-}
+  const getStageColor = useCallback((stageName) => {
+    const stageColors = {
+      "Preparation": "blue",
+      "CalotTriangleDissection": "emerald", 
+      "ClippingCutting": "purple",
+      "GallbladderDissection": "amber",
+      "GallbladderPackaging": "rose",
+      "CleaningCoagulation": "orange",
+      "GallbladderRetraction": "cyan"
+    }
+    return stageColors[stageName] || "gray"
+  }, [])
 
   const handleConnectionChange = useCallback((data) => {
     const status = data.connected ? 'connected' : 'disconnected'
@@ -231,7 +231,7 @@ const getStageColor = (stageName) => {
       console.error('Error processing tool detection:', error)
       console.error('Problematic message:', message)
     }
-  }, [addEvent, currentOperation, detectedTools, setDetectedTools])
+  }, [addEvent, currentOperation, detectedTools, setDetectedTools, TOOL_NAMES])
 
 
 
@@ -257,8 +257,14 @@ const getStageColor = (stageName) => {
       await mqttService.connect(finalBrokerUrl)
       
       // Subscribe to topics
-      mqttService.subscribe(SURGERY_STAGE_TOPIC, handleSurgeryStage)
-      mqttService.subscribe(SURGERY_TOOL_TOPIC, handleSurgeryTools)
+      // Subscribe to topics based on active model
+      if (activeModel === 'stage-analysis') {
+        mqttService.subscribe(SURGERY_STAGE_TOPIC, handleSurgeryStage)
+        console.log('Subscribed to surgery/stage topic')
+      } else if (activeModel === 'tool-detection') {
+        mqttService.subscribe(SURGERY_TOOL_TOPIC, handleSurgeryTools)
+        console.log('Subscribed to surgery/tool topic')
+      }
 
       console.log('MQTT connected and subscribed to surgery topics')
       
@@ -266,12 +272,15 @@ const getStageColor = (stageName) => {
       console.warn('MQTT connection failed (non-blocking):', error.message)
       // Don't throw the error, just log it
     }
-  }, [isEnabled, handleConnectionChange, handleError, handleSurgeryStage, retryAttempts])
+  }, [isEnabled, activeModel, handleConnectionChange, handleError, handleSurgeryStage, handleSurgeryTools])
 
   const disconnect = useCallback(() => {
-    // Unsubscribe from topics
-    mqttService.unsubscribe(SURGERY_STAGE_TOPIC, handleSurgeryStage)
-    mqttService.unsubscribe(SURGERY_TOOL_TOPIC, handleSurgeryTools)
+    // Conditional unsubscribe
+    if (activeModel === 'stage-analysis') {
+      mqttService.unsubscribe(SURGERY_STAGE_TOPIC, handleSurgeryStage)
+    } else if (activeModel === 'tool-detection') {
+      mqttService.unsubscribe(SURGERY_TOOL_TOPIC, handleSurgeryTools)
+    }
 
     // Remove event handlers
     mqttService.off('connect', handleConnectionChange)
@@ -284,7 +293,7 @@ const getStageColor = (stageName) => {
     setConnectionStatus('disconnected')
     setMqttConnected(false)
     setError(null)
-  }, [handleConnectionChange, handleError, handleSurgeryStage, handleSurgeryTools, setMqttConnected])
+  }, [activeModel, handleConnectionChange, handleError, handleSurgeryStage, handleSurgeryTools, setMqttConnected])
 
   const publish = useCallback((topic, message) => {
     if (!isEnabled) return false
@@ -325,9 +334,14 @@ const getStageColor = (stageName) => {
         
         if (!isActive) return // Component unmounted during connection
         
-        // Subscribe to topics
-        mqttService.subscribe(SURGERY_STAGE_TOPIC, handleSurgeryStage)
-        mqttService.subscribe(SURGERY_TOOL_TOPIC, handleSurgeryTools)
+        // Subscribe to topics based on active model
+        if (activeModel === 'stage-analysis') {
+          mqttService.subscribe(SURGERY_STAGE_TOPIC, handleSurgeryStage)
+          console.log('Subscribed to surgery/stage topic')
+        } else if (activeModel === 'tool-detection') {
+          mqttService.subscribe(SURGERY_TOOL_TOPIC, handleSurgeryTools)
+          console.log('Subscribed to surgery/tool topic')
+        }
 
         console.log('MQTT connected and subscribed to surgery topics')
         
@@ -349,9 +363,12 @@ const getStageColor = (stageName) => {
     return () => {
       isActive = false
       
-      // Cleanup - unsubscribe and disconnect
-      mqttService.unsubscribe(SURGERY_STAGE_TOPIC, handleSurgeryStage)
-      mqttService.unsubscribe(SURGERY_TOOL_TOPIC, handleSurgeryTools)
+      // Cleanup - conditional unsubscribe
+      if (activeModel === 'stage-analysis') {
+        mqttService.unsubscribe(SURGERY_STAGE_TOPIC, handleSurgeryStage)
+      } else if (activeModel === 'tool-detection') {
+        mqttService.unsubscribe(SURGERY_TOOL_TOPIC, handleSurgeryTools)
+      }
       
       // Remove event handlers
       mqttService.off('connect', handleConnectionChange)
@@ -365,7 +382,7 @@ const getStageColor = (stageName) => {
       setMqttConnected(false)
       setError(null)
     }
-  }, [isEnabled, handleConnectionChange, handleError, handleSurgeryStage, handleSurgeryTools, setMqttConnected])
+  }, [isEnabled, activeModel, handleConnectionChange, handleError, handleSurgeryStage, handleSurgeryTools, setMqttConnected])
 
   return {
     connectionStatus,

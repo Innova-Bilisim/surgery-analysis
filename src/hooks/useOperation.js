@@ -40,7 +40,7 @@ const useOperation = () => {
     clearEvents()
     
     return operation
-  }, [setCurrentOperation, setEvents])
+  }, [setCurrentOperation, clearEvents])
 
   // Navigate to operation analysis
   const navigateToOperation = useCallback((operationId) => {

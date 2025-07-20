@@ -48,7 +48,7 @@ const AnalysisPage = ({ operationId }) => {
   const { 
     connectionStatus: mqttStatus, 
     isConnected: mqttConnected 
-  } = useMQTT(analysisStatus === 'running')
+  } = useMQTT(analysisStatus === 'running', activeModel)
 
   // Tool names constant
   const TOOL_NAMES = [
