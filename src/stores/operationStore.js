@@ -71,6 +71,46 @@ const useOperationStore = create(
       toolsLastUpdate: timestamp || new Date().toISOString()
     }),
     
+    // Stage Progress State
+    stageProgress: {
+      currentStage: null,
+      cleanStageName: null,
+      lastProcessedStage: null, // YENİ - Son işlenmiş stage (infinite loop önleme için)
+      stageStatus: {}, // Her stage için son status: { [stageName]: { status, lastUpdate, activeTool } }
+      lastUpdate: null
+    },
+    
+    // Stage Progress Actions  
+    updateStageStatus: (statusData) => {
+      const { currentStage, cleanStageName, status, lastUpdate, activeTool, lastProcessedStage } = statusData
+      
+      set((state) => ({
+        stageProgress: {
+          ...state.stageProgress,
+          currentStage,
+          cleanStageName,
+          lastUpdate,
+          lastProcessedStage: lastProcessedStage !== undefined ? lastProcessedStage : state.stageProgress.lastProcessedStage, // YENİ
+          stageStatus: {
+            ...state.stageProgress.stageStatus,
+            [currentStage]: {
+              status,
+              lastUpdate,
+              activeTool
+            }
+          }
+        }
+      }))
+    },
+
+    // YENİ - Stage processing helper action
+    setLastProcessedStage: (stageName) => set((state) => ({
+      stageProgress: {
+        ...state.stageProgress,
+        lastProcessedStage: stageName
+      }
+    })),
+    
     // Actions
     resetAll: () => set({
       currentOperation: null,
@@ -86,9 +126,16 @@ const useOperationStore = create(
       analysisStatus: 'idle',
       activeModel: null,
       detectedTools: [],
-      toolsLastUpdate: null
+      toolsLastUpdate: null,
+      stageProgress: {
+        currentStage: null,
+        cleanStageName: null,
+        lastProcessedStage: null, // YENİ
+        stageStatus: {},
+        lastUpdate: null
+      }
     })
   }))
 )
 
-export default useOperationStore 
+export default useOperationStore

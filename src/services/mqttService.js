@@ -99,7 +99,7 @@ class MqttService {
           try {
             const messageStr = message.toString()
             if (!this.isQuiet) {
-              console.log('MQTT message received:', { topic, message: messageStr })
+              //console.log('MQTT message received:', { topic, message: messageStr })
             }
             
             // Parse JSON message

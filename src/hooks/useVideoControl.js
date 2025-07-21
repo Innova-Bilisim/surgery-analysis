@@ -33,7 +33,7 @@ const useVideoControl = () => {
     const seconds = Math.floor(timeInSeconds % 60)
     
     const formattedTime = `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`
-    console.log('🕐 Hook: Updating current time to:', formattedTime)
+    //console.log('🕐 Hook: Updating current time to:', formattedTime)
     setCurrentTime(formattedTime)
   }, [setCurrentTime])
 

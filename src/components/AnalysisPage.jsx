@@ -35,6 +35,7 @@ const AnalysisPage = ({ operationId }) => {
     activeModel,
     detectedTools,
     toolsLastUpdate,
+    stageProgress,
     setAnalysisStatus, 
     setActiveModel,
     setModelActive,
@@ -57,7 +58,99 @@ const AnalysisPage = ({ operationId }) => {
     "Clipper", "Irrigator", "SpecimenBag"
   ]
 
+  const getStageNavigation = (currentStage) => {
+    const stages = [
+      "Preparation", "CalotTriangleDissection", "ClippingCutting", 
+      "GallbladderDissection", "GallbladderPackaging", 
+      "CleaningCoagulation", "GallbladderRetraction"
+    ]
+    
+    const currentIndex = stages.indexOf(currentStage)
+    
+    return {
+      previous: currentIndex > 0 ? stages[currentIndex - 1] : null,
+      current: currentStage,
+      next: currentIndex < stages.length - 1 ? stages[currentIndex + 1] : null
+    }
+  }
 
+  const getStageInfo = (currentStage) => {
+    const stages = [
+      "Preparation", "CalotTriangleDissection", "ClippingCutting", 
+      "GallbladderDissection", "GallbladderPackaging", 
+      "CleaningCoagulation", "GallbladderRetraction"
+    ]
+    
+    // MQTT'den gelen stage name'i normalize et
+    const normalizeStage = (stageName) => {
+      return stageName
+        .replace(/_/g, '')        // "Calot_Triangle_Dissection" → "CalotTriangleDissection"
+        .replace(/Stage$/, '')    // "...Stage" → "..."
+    }
+    
+    const normalizedCurrent = normalizeStage(currentStage)
+    //console.log('🔍 Stage normalization:', currentStage, '→', normalizedCurrent)
+    
+    let currentIndex = stages.indexOf(normalizedCurrent)
+    
+    // Eğer hala bulunamazsa case-insensitive dene
+    if (currentIndex === -1) {
+      currentIndex = stages.findIndex(stage => 
+        stage.toLowerCase() === normalizedCurrent.toLowerCase()
+      )
+    }
+    
+    //console.log('🔍 Found index:', currentIndex, 'for stage:', normalizedCurrent)
+    
+    if (currentIndex === -1) {
+      console.warn('⚠️ Stage not found in array:', currentStage)
+      return { current: 0, total: stages.length, progress: 0, next: null }
+    }
+    
+    const total = stages.length
+    const current = currentIndex + 1
+    const progress = ((currentIndex + 1) / total) * 100
+    
+    return {
+      current,
+      total,
+      progress: Math.round(progress),
+      next: currentIndex < total - 1 ? stages[currentIndex + 1] : null
+    }
+  }
+
+  const getCleanStageName = (stageName) => {
+    const cleanNames = {
+      "Preparation": "Preparation",
+      "CalotTriangleDissection": "Calot Triangle Dissection",
+      "ClippingCutting": "Clipping Cutting",
+      "GallbladderDissection": "Gallbladder Dissection",
+      "GallbladderPackaging": "Gallbladder Packaging",
+      "CleaningCoagulation": "Cleaning Coagulation",
+      "GallbladderRetraction": "Gallbladder Retraction"
+    }
+    return cleanNames[stageName] || stageName
+  }
+  
+  const getStatusIndicator = (status) => {
+    const baseClasses = "w-3 h-3 rounded-full animate-pulse"
+    switch(status) {
+      case 'green': return <div className={`${baseClasses} bg-green-500 shadow-green-500/50 shadow-lg`} />
+      case 'pink': return <div className={`${baseClasses} bg-pink-500 shadow-pink-500/50 shadow-lg`} />
+      case 'red': return <div className={`${baseClasses} bg-red-500 shadow-red-500/50 shadow-lg`} />
+      default: return <div className={`${baseClasses} bg-gray-500`} />
+    }
+  }
+  
+  const getStatusStyles = (status) => {
+    const statusStyles = {
+      green: "bg-green-500/20 border-green-500 text-green-400",
+      pink: "bg-pink-500/20 border-pink-500 text-pink-400", 
+      red: "bg-red-500/20 border-red-500 text-red-400",
+      pending: "bg-gray-500/10 border-gray-500/20 text-gray-400"
+    }
+    return statusStyles[status] || statusStyles.pending
+  }
 
   // Load operation on component mount
   useEffect(() => {
@@ -70,11 +163,11 @@ const AnalysisPage = ({ operationId }) => {
   const handleVideoUpdate = useCallback((value, type) => {
     if (type === 'timeupdate') {
       // Handle time updates (sol taraf - geçen zaman)
-      console.log('⏱️ Time update:', value, 'seconds')
+      //console.log('⏱️ Time update:', value, 'seconds')
       handleRealTimeUpdate(value)
     } else {
       // Handle duration updates (sağ taraf - toplam süre)
-      console.log('📏 Duration update:', value, 'seconds')
+      //console.log('📏 Duration update:', value, 'seconds')
       setVideoDuration(value)
     }
   }, [handleRealTimeUpdate, setVideoDuration])
@@ -392,7 +485,10 @@ const AnalysisPage = ({ operationId }) => {
             </div>
           ) : (
             // Video Player (Running State)
-            <div key={`video-${activeModel || 'idle'}`}>
+            <div 
+              key={`video-${activeModel || 'idle'}`} 
+              className="flex-1 min-h-[600px] bg-dark-800 rounded-xl overflow-hidden"
+            >
               <VideoPlayerErrorBoundary>
                 <VideoPlayer 
                   isLive={false}
@@ -432,6 +528,58 @@ const AnalysisPage = ({ operationId }) => {
               )}
             </div>
           </div>
+
+          {/* Stage Progress Widget - SMART CONTEXT VERSION */}
+          {analysisStatus === 'running' && stageProgress?.currentStage && (
+            <div className={`px-6 py-4 border-b border-primary-500/20 transition-colors ${(() => {
+              const currentStatus = stageProgress.stageStatus[stageProgress.currentStage]?.status || 'pending'
+              return currentStatus === 'green' ? 'bg-green-500/10' :
+                     currentStatus === 'pink' ? 'bg-pink-500/10' :
+                     currentStatus === 'red' ? 'bg-red-500/10' : 'bg-dark-900/50'
+            })()}`}>
+              <h4 className="text-sm font-semibold text-emerald-400 mb-3">SURGERY PROGRESS</h4>
+              {(() => {
+                const stageInfo = getStageInfo(stageProgress.currentStage)
+                const currentStatus = stageProgress.stageStatus[stageProgress.currentStage]?.status || 'pending'
+                const cleanCurrentName = getCleanStageName(stageProgress.currentStage)
+                const cleanNextName = stageInfo.next ? getCleanStageName(stageInfo.next) : null
+                
+                return (
+                  <div className="space-y-2">
+                    {/* Current Stage Info */}
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <span className="text-white font-medium">
+                          Stage {stageInfo.current}/{stageInfo.total}: {cleanCurrentName}
+                        </span>
+                        <span className="text-lg">{getStatusIndicator(currentStatus)}</span>
+                      </div>
+                    </div>
+                    
+                    {/* Progress Bar */}
+                    <div className="flex items-center gap-3">
+                      <div className="flex-1 bg-dark-700 rounded-full h-2">
+                        <div 
+                          className={`h-2 rounded-full transition-all duration-500 ${
+                            currentStatus === 'green' ? 'bg-green-500' :
+                            currentStatus === 'pink' ? 'bg-pink-500' :
+                            currentStatus === 'red' ? 'bg-red-500' : 'bg-gray-500'
+                          }`}
+                          style={{ width: `${stageInfo.progress}%` }}
+                        />
+                      </div>
+                      {cleanNextName && (
+                        <div className="flex items-center gap-1 text-xs text-dark-300">
+                          <span>→</span>
+                          <span>{cleanNextName}</span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )
+              })()}
+            </div>
+          )}
 
           {/* Tool Detection Widget - Only show when Tool Detection is active */}
           {activeModel === 'tool-detection' && analysisStatus === 'running' && (

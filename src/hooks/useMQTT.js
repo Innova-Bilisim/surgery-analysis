@@ -20,9 +20,8 @@ const useMQTT = (enabled = true, activeModel = null) => {
   const [error, setError] = useState(null)
   const [retryAttempts, setRetryAttempts] = useState(0)
   const [isEnabled, setIsEnabled] = useState(enabled) // MQTT enabled flag
-  const [lastStage, setLastStage] = useState(null) // Son stage'i sakla
   
-  const { addEvent, setMqttConnected, currentOperation, setDetectedTools, detectedTools } = useOperationStore()
+  const { addEvent, setMqttConnected, currentOperation, setDetectedTools, detectedTools, updateStageStatus } = useOperationStore()
 
   // Single topic for all surgery analysis
   const SURGERY_STAGE_TOPIC = 'surgery/stage'
@@ -52,7 +51,8 @@ const useMQTT = (enabled = true, activeModel = null) => {
     setError(null)
     if (data.connected) {
       setRetryAttempts(0) // Reset retry attempts on successful connection
-      setLastStage(null) // Reset last stage on new connection
+      const { setLastProcessedStage } = useOperationStore.getState()
+      setLastProcessedStage(null)
     }
   }, [setMqttConnected])
 
@@ -83,38 +83,28 @@ const useMQTT = (enabled = true, activeModel = null) => {
   // surgery/stage topic handler - Geliştirilmiş stage handling
   const handleSurgeryStage = useCallback((message) => {
     try {
-      console.log('Received surgery analysis:', message)
-      
-      // Surgery type mesajını ignore et
-      if (message.surgery_type && message.file_name) {
-        console.log('📋 Surgery info received:', message.surgery_type, message.file_name)
-        return
-      }
-      
-      // SADECE BEGIN MESAJLARINI KABUL ET
-      if (!message.begin) {
-        console.log('⏭️ Ignoring non-begin message')
-        return
-      }
+      if (message.surgery_type && message.file_name) return
+      if (!message.begin) return
       
       const currentStage = message.stage
       const timestamp = message.begin
       
-      // currentStage kontrolü
-      if (!currentStage || typeof currentStage !== 'string') {
-        console.log('⚠️ No valid stage found in begin message:', message)
-        return
-      }
+      if (!currentStage || typeof currentStage !== 'string') return
       
-      // Eğer aynı stage ise, event ekleme
-      if (lastStage === currentStage) {
+      // STORE'DAN SON STAGE'I AL - local state yerine
+      const { stageProgress } = useOperationStore.getState()
+      const lastProcessedStage = stageProgress?.lastProcessedStage
+      
+      if (lastProcessedStage === currentStage) {
         console.log(`🔄 Ignoring duplicate stage: ${currentStage}`)
         return
       }
       
-      // Yeni stage - event ekle
-      console.log(`✨ New surgery stage detected: ${lastStage || 'None'} → ${currentStage}`)
-      setLastStage(currentStage)
+      console.log(`✨ New surgery stage detected: ${lastProcessedStage || 'None'} → ${currentStage}`)
+      
+      // Store'a son işlenmiş stage'i kaydet
+      const { setLastProcessedStage } = useOperationStore.getState()
+      setLastProcessedStage(currentStage)
       
       // Stage ismini temizle ve anlamlı hale getir
       const cleanStageName = currentStage
@@ -124,7 +114,7 @@ const useMQTT = (enabled = true, activeModel = null) => {
         .trim()
         .replace(/^\w/, c => c.toUpperCase())
       
-      // Sadece stage begin event'i oluştur
+      // Event yaratma
       const event = {
         id: `surgery_${Date.now()}_${Math.random().toString(16).substr(2, 8)}`,
         operationId: currentOperation?.id || null,
@@ -142,14 +132,13 @@ const useMQTT = (enabled = true, activeModel = null) => {
       addEvent(event)
     } catch (error) {
       console.error('Error processing surgery analysis:', error)
-      console.error('Problematic message:', message)
     }
-  }, [addEvent, currentOperation, lastStage, getStageColor])
+  }, [addEvent, currentOperation, getStageColor])
 
   // surgery/tool topic handler - Tool detection
   const handleSurgeryTools = useCallback((message) => {
     try {
-      console.log('Received tool detection:', message)
+      //console.log('Received tool detection:', message)
       
       const newTools = message.tool || []
       const timestamp = message.datetime
@@ -159,18 +148,32 @@ const useMQTT = (enabled = true, activeModel = null) => {
       
       console.log(`🔧 Tools detected: [${validTools.join(', ')}]`)
       
-      // Update store with detected tools
+      // Get previous tools state before updating store
+      const { detectedTools: prevTools } = useOperationStore.getState()
+      
+      // Tool kombinasyonu değişikliğini kontrol et - EN BAŞTA TANIMLA
+      const toolsChanged = (
+        validTools.length !== prevTools.length ||
+        validTools.some(tool => !prevTools.includes(tool)) ||
+        prevTools.some(tool => !validTools.includes(tool))
+      )
+      
+      // Eğer hiçbir değişiklik yoksa, event yaratma ve erken çık
+      if (!toolsChanged) {
+        console.log('🔄 No tool changes detected, skipping event creation')
+        return
+      }
+      
+      // Update store with detected tools - SADECE DEĞİŞİKLİK VARSA
       setDetectedTools(validTools, timestamp)
 
-      const { detectedTools: prevTools } = useOperationStore.getState()
-
-      // Check for significant changes to create events
-      // const prevTools = detectedTools || []
+      // Hangi tool'lar eklendi/çıkarıldı analizi
       const newlyDetected = validTools.filter(tool => !prevTools.includes(tool))
       const removed = prevTools.filter(tool => !validTools.includes(tool))
       
-      // Create events for significant changes
-      if (newlyDetected.length > 0) {
+      // INDIVIDUAL TOOL EVENTS - Sadece 1-2 tool için spam yapmamak için
+      // Tek seferde çok fazla tool değişikliği varsa grupla
+      if (newlyDetected.length > 0 && newlyDetected.length <= 2) {
         const event = {
           id: `tool_detected_${Date.now()}_${Math.random().toString(16).substr(2, 8)}`,
           operationId: currentOperation?.id || null,
@@ -185,7 +188,7 @@ const useMQTT = (enabled = true, activeModel = null) => {
         addEvent(event)
       }
       
-      if (removed.length > 0) {
+      if (removed.length > 0 && removed.length <= 2) {
         const event = {
           id: `tool_removed_${Date.now()}_${Math.random().toString(16).substr(2, 8)}`,
           operationId: currentOperation?.id || null,
@@ -200,33 +203,118 @@ const useMQTT = (enabled = true, activeModel = null) => {
         addEvent(event)
       }
       
-      // Special events
-      if (validTools.length === 0 && prevTools.length > 0) {
+      // WORKFLOW STATE EVENTS - Anlamlı durum değişiklikleri
+      const prevCount = prevTools.length
+      const currentCount = validTools.length
+      
+      // Workflow başlangıcı: hiç tool yokken 1 tool algılandı
+      if (prevCount === 0 && currentCount === 1) {
         const event = {
-          id: `tools_inactive_${Date.now()}_${Math.random().toString(16).substr(2, 8)}`,
+          id: `workflow_start_${Date.now()}_${Math.random().toString(16).substr(2, 8)}`,
           operationId: currentOperation?.id || null,
           timestamp: timestamp || new Date().toISOString(),
-          type: 'tools_inactive',
-          description: 'All tools inactive',
-          severity: 'low',
+          type: 'workflow_start',
+          description: `Surgery workflow started: ${validTools[0]}`,
+          severity: 'high',
           source: 'mqtt',
           confidence: null,
-          data: { tools: [], action: 'all_inactive' }
+          data: { tools: validTools, action: 'workflow_start', transition: 'none_to_single' }
         }
         addEvent(event)
       }
       
-      if (validTools.length > 1) {
+      // Workflow yoğun başlangıcı: hiç tool yokken direkt 2+ tool
+      else if (prevCount === 0 && currentCount > 1) {
         const event = {
-          id: `multiple_tools_${Date.now()}_${Math.random().toString(16).substr(2, 8)}`,
+          id: `workflow_intense_start_${Date.now()}_${Math.random().toString(16).substr(2, 8)}`,
           operationId: currentOperation?.id || null,
           timestamp: timestamp || new Date().toISOString(),
-          type: 'multiple_tools',
+          type: 'workflow_intense_start',
+          description: `Surgery started with multiple tools: ${validTools.join(', ')}`,
+          severity: 'high',
+          source: 'mqtt',
+          confidence: null,
+          data: { tools: validTools, action: 'workflow_intense_start', transition: 'none_to_multiple' }
+        }
+        addEvent(event)
+      }
+      
+      // Workflow yoğunlaşması: 1 tool'dan 2+ tool'a geçiş
+      else if (prevCount === 1 && currentCount > 1) {
+        const event = {
+          id: `workflow_intensify_${Date.now()}_${Math.random().toString(16).substr(2, 8)}`,
+          operationId: currentOperation?.id || null,
+          timestamp: timestamp || new Date().toISOString(),
+          type: 'workflow_intensify',
           description: `Multiple tools active: ${validTools.join(', ')}`,
           severity: 'medium',
           source: 'mqtt',
           confidence: null,
-          data: { tools: validTools, action: 'multiple_active' }
+          data: { tools: validTools, action: 'workflow_intensify', transition: 'single_to_multiple' }
+        }
+        addEvent(event)
+      }
+      
+      // Workflow odaklanması: 2+ tool'dan 1 tool'a geçiş
+      else if (prevCount > 1 && currentCount === 1) {
+        const event = {
+          id: `workflow_focus_${Date.now()}_${Math.random().toString(16).substr(2, 8)}`,
+          operationId: currentOperation?.id || null,
+          timestamp: timestamp || new Date().toISOString(),
+          type: 'workflow_focus',
+          description: `Workflow focused on: ${validTools[0]}`,
+          severity: 'medium',
+          source: 'mqtt',
+          confidence: null,
+          data: { tools: validTools, action: 'workflow_focus', transition: 'multiple_to_single' }
+        }
+        addEvent(event)
+      }
+      
+      // Workflow durması: 1+ tool'dan hiç tool'a geçiş
+      else if (prevCount > 0 && currentCount === 0) {
+        const event = {
+          id: `workflow_pause_${Date.now()}_${Math.random().toString(16).substr(2, 8)}`,
+          operationId: currentOperation?.id || null,
+          timestamp: timestamp || new Date().toISOString(),
+          type: 'workflow_pause',
+          description: `Surgery workflow paused`,
+          severity: 'low',
+          source: 'mqtt',
+          confidence: null,
+          data: { tools: [], action: 'workflow_pause', transition: 'active_to_none', lastTools: prevTools }
+        }
+        addEvent(event)
+      }
+      
+      // Multiple tool değişikliği: 2+ tool'dan farklı 2+ tool'a
+      else if (prevCount > 1 && currentCount > 1 && toolsChanged) {
+        const event = {
+          id: `workflow_shift_${Date.now()}_${Math.random().toString(16).substr(2, 8)}`,
+          operationId: currentOperation?.id || null,
+          timestamp: timestamp || new Date().toISOString(),
+          type: 'workflow_shift',
+          description: `Tool combination changed: ${validTools.join(', ')}`,
+          severity: 'medium',
+          source: 'mqtt',
+          confidence: null,
+          data: { tools: validTools, action: 'workflow_shift', transition: 'multiple_to_multiple', prevTools }
+        }
+        addEvent(event)
+      }
+      
+      // SADECE TOOL DEĞİŞİKLİĞİ: Aynı sayıda ama farklı tool'lar (sadece 1 tool için)
+      else if (currentCount === 1 && prevCount === 1 && toolsChanged) {
+        const event = {
+          id: `tool_switch_${Date.now()}_${Math.random().toString(16).substr(2, 8)}`,
+          operationId: currentOperation?.id || null,
+          timestamp: timestamp || new Date().toISOString(),
+          type: 'tool_switch',
+          description: `Tool switched: ${prevTools[0]} → ${validTools[0]}`,
+          severity: 'low',
+          source: 'mqtt',
+          confidence: null,
+          data: { tools: validTools, action: 'tool_switch', prevTools, transition: 'single_to_single' }
         }
         addEvent(event)
       }
@@ -236,6 +324,36 @@ const useMQTT = (enabled = true, activeModel = null) => {
       console.error('Problematic message:', message)
     }
   }, [addEvent, currentOperation, setDetectedTools])
+
+  // surgery/status topic handler - Stage progress status
+  const handleSurgeryStatus = useCallback((message) => {
+    try {
+      const { stage, status, datetime, tool } = message
+      
+      console.log(`📊 Stage status update: ${stage} - ${status}`)
+      
+      // Clean stage name for better display
+      const cleanStageName = stage
+        .replace(/_/g, ' ')
+        .replace(/Stage$/, '')
+        .replace(/([A-Z])/g, ' $1')
+        .trim()
+        .replace(/^\w/, c => c.toUpperCase())
+      
+      // Store'u güncelle - stage progress widget için
+      updateStageStatus({
+        currentStage: stage,
+        cleanStageName,
+        status: status,       // red/pink/green direkt backend'den kullan
+        lastUpdate: datetime,
+        activeTool: tool
+      })
+      
+    } catch (error) {
+      console.error('Error processing stage status:', error)
+      console.error('Problematic message:', message)
+    }
+  }, [updateStageStatus])
 
 
 
@@ -260,30 +378,33 @@ const useMQTT = (enabled = true, activeModel = null) => {
       const finalBrokerUrl = brokerUrl || defaultBrokerUrl
       await mqttService.connect(finalBrokerUrl)
       
-      // Subscribe to topics
       // Subscribe to topics based on active model
       if (activeModel === 'stage-analysis') {
         mqttService.subscribe(SURGERY_STAGE_TOPIC, handleSurgeryStage)
-        console.log('Subscribed to surgery/stage topic')
+        mqttService.subscribe(SURGERY_STATUS_TOPIC, handleSurgeryStatus) // YENİ - Her iki model için de
+        console.log('Subscribed to surgery/stage and surgery/status topics')
       } else if (activeModel === 'tool-detection') {
         mqttService.subscribe(SURGERY_TOOL_TOPIC, handleSurgeryTools)
-        console.log('Subscribed to surgery/tool topic')
+        mqttService.subscribe(SURGERY_STATUS_TOPIC, handleSurgeryStatus) // YENİ - Her iki model için de
+        console.log('Subscribed to surgery/tool and surgery/status topics')
       }
 
-      console.log('MQTT connected and subscribed to surgery topics')
+      //console.log('MQTT connected and subscribed to surgery topics')
       
     } catch (error) {
       console.warn('MQTT connection failed (non-blocking):', error.message)
       // Don't throw the error, just log it
     }
-  }, [isEnabled, activeModel, handleConnectionChange, handleError, handleSurgeryStage, handleSurgeryTools])
+  }, [isEnabled, activeModel, handleConnectionChange, handleError, handleSurgeryStage, handleSurgeryTools, handleSurgeryStatus])
 
   const disconnect = useCallback(() => {
     // Conditional unsubscribe
     if (activeModel === 'stage-analysis') {
       mqttService.unsubscribe(SURGERY_STAGE_TOPIC, handleSurgeryStage)
+      mqttService.unsubscribe(SURGERY_STATUS_TOPIC, handleSurgeryStatus) // YENİ
     } else if (activeModel === 'tool-detection') {
       mqttService.unsubscribe(SURGERY_TOOL_TOPIC, handleSurgeryTools)
+      mqttService.unsubscribe(SURGERY_STATUS_TOPIC, handleSurgeryStatus) // YENİ
     }
 
     // Remove event handlers
@@ -297,7 +418,7 @@ const useMQTT = (enabled = true, activeModel = null) => {
     setConnectionStatus('disconnected')
     setMqttConnected(false)
     setError(null)
-  }, [activeModel, handleConnectionChange, handleError, handleSurgeryStage, handleSurgeryTools, setMqttConnected])
+  }, [activeModel, handleConnectionChange, handleError, handleSurgeryStage, handleSurgeryTools, handleSurgeryStatus, setMqttConnected])
 
   const publish = useCallback((topic, message) => {
     if (!isEnabled) return false
@@ -341,13 +462,15 @@ const useMQTT = (enabled = true, activeModel = null) => {
         // Subscribe to topics based on active model
         if (activeModel === 'stage-analysis') {
           mqttService.subscribe(SURGERY_STAGE_TOPIC, handleSurgeryStage)
-          console.log('Subscribed to surgery/stage topic')
+          mqttService.subscribe(SURGERY_STATUS_TOPIC, handleSurgeryStatus) // YENİ
+          console.log('Subscribed to surgery/stage and surgery/status topics')
         } else if (activeModel === 'tool-detection') {
           mqttService.subscribe(SURGERY_TOOL_TOPIC, handleSurgeryTools)
-          console.log('Subscribed to surgery/tool topic')
+          mqttService.subscribe(SURGERY_STATUS_TOPIC, handleSurgeryStatus) // YENİ
+          console.log('Subscribed to surgery/tool and surgery/status topics')
         }
 
-        console.log('MQTT connected and subscribed to surgery topics')
+        //console.log('MQTT connected and subscribed to surgery topics')
         
       } catch (error) {
         if (!isActive) return // Component unmounted during connection
@@ -370,8 +493,10 @@ const useMQTT = (enabled = true, activeModel = null) => {
       // Cleanup - conditional unsubscribe
       if (activeModel === 'stage-analysis') {
         mqttService.unsubscribe(SURGERY_STAGE_TOPIC, handleSurgeryStage)
+        mqttService.unsubscribe(SURGERY_STATUS_TOPIC, handleSurgeryStatus) // YENİ
       } else if (activeModel === 'tool-detection') {
         mqttService.unsubscribe(SURGERY_TOOL_TOPIC, handleSurgeryTools)
+        mqttService.unsubscribe(SURGERY_STATUS_TOPIC, handleSurgeryStatus) // YENİ
       }
       
       // Remove event handlers
@@ -386,7 +511,7 @@ const useMQTT = (enabled = true, activeModel = null) => {
       setMqttConnected(false)
       setError(null)
     }
-  }, [isEnabled, activeModel, handleConnectionChange, handleError, handleSurgeryStage, handleSurgeryTools, setMqttConnected])
+  }, [isEnabled, activeModel, handleConnectionChange, handleError, handleSurgeryStage, handleSurgeryTools, handleSurgeryStatus, setMqttConnected])
 
   return {
     connectionStatus,

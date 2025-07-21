@@ -444,7 +444,7 @@ const VideoPlayer = ({
         if (cleanupRef.current) return
         const buffered = player.buffered()
         if (buffered.length > 0) {
-          console.log('🎬 Video buffering progress:', buffered.end(buffered.length - 1))
+          //console.log('🎬 Video buffering progress:', buffered.end(buffered.length - 1))
         }
       })
 
